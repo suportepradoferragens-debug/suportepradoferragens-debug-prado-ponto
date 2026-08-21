@@ -25,7 +25,13 @@ function showApp(){$('authScreen').classList.add('hidden');$('appShell').classLi
 function isManager(){return ['admin','manager'].includes(me?.role)}
 
 async function loadProfile(){
-  const {data,error}=await client.from('employees').select('id,company_id,branch_id,full_name,email,role,active,user_id').single();
+  const {data:{user},error:userError}=await client.auth.getUser();
+  if(userError||!user) throw new Error('Não foi possível identificar o usuário autenticado.');
+  const {data,error}=await client.from('employees')
+    .select('id,company_id,branch_id,full_name,email,role,active,user_id')
+    .eq('user_id',user.id)
+    .eq('active',true)
+    .single();
   if(error||!data) throw new Error('Seu login ainda não está vinculado a um funcionário ativo.');
   me=data;
   const {data:b}=await client.from('branches').select('id,name,address,latitude,longitude,geofence_radius_m').eq('id',me.branch_id).single();
