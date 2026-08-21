@@ -207,7 +207,7 @@ function startExternalLocationTracking(){
 
   externalLocationWatchId=navigator.geolocation.watchPosition(async pos=>{
     const now=Date.now();
-    if(now-lastExternalLocationSentAt<60000) return;
+    if(now-lastExternalLocationSentAt<15000) return;
     if(document.visibilityState==='hidden') return;
 
     lastExternalLocationSentAt=now;
@@ -751,7 +751,7 @@ function buildManagerMap(employees,presenceBy){
     const lat=Number(p.last_latitude),lng=Number(p.last_longitude);
     bounds.push([lat,lng]);
     L.marker([lat,lng]).addTo(managerMap)
-      .bindPopup(`<strong>${esc(emp.full_name)}</strong><br>${p.is_present?'Jornada ativa':'Jornada encerrada'}<br>Última posição: ${p.last_location_at?fmtTime(p.last_location_at):'—'}`);
+      .bindPopup(`<strong>${esc(emp.full_name)}</strong><br>${p.is_present?'Jornada ativa':'Jornada encerrada'}<br>${speedLabel(p.last_speed_kmh)}<br>Última posição: ${p.last_location_at?fmtTime(p.last_location_at):'—'}`);
   });
 
   if(bounds.length>1) managerMap.fitBounds(bounds,{padding:[30,30],maxZoom:16});
@@ -906,7 +906,7 @@ async function openEmployeeDetail(employeeId){
   try{
   const [{data:events},{data:locations},{data:overtime},{data:schedule}]=await Promise.all([
     client.from('attendance_events').select('event_type,occurred_at,automatic,receipt_code').eq('employee_id',employeeId).gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
-    client.from('employee_location_updates').select('latitude,longitude,accuracy_m,recorded_at').eq('employee_id',employeeId).gte('recorded_at',startToday()).lte('recorded_at',endToday()).order('recorded_at',{ascending:true}).limit(300),
+    client.from('employee_location_updates').select('latitude,longitude,accuracy_m,speed_kmh,recorded_at').eq('employee_id',employeeId).gte('recorded_at',startToday()).lte('recorded_at',endToday()).order('recorded_at',{ascending:true}).limit(300),
     client.rpc('get_overtime_snapshot'),
     client.from('work_schedules').select('start_time,break_start,break_end,end_time,tolerance_minutes').eq('employee_id',employeeId).eq('weekday',new Date().getDay()).maybeSingle()
   ]);
@@ -933,12 +933,13 @@ async function openEmployeeDetail(employeeId){
     <div><span>Hora extra</span><strong>${formatMinutes(ot?.total_overtime_minutes||0)}</strong></div>
     <div><span>Almoço extra</span><strong>${formatMinutes(ot?.lunch_overtime_minutes||0)}</strong></div>
     <div><span>Última posição</span><strong>${locs.length?locationAgeLabel(locs[locs.length-1].recorded_at):'Sem posição'}</strong></div>
+    <div><span>Velocidade atual</span><strong>${locs.length?speedLabel(locs[locs.length-1].speed_kmh):'—'}</strong></div>
     <div><span>Registros hoje</span><strong>${arr.length}</strong></div>`;
 
   $('detailLocationTimeline').innerHTML=locs.length?locs.slice().reverse().map(l=>`
     <button class="location-row" onclick="openMapsDirections(${Number(l.latitude)},${Number(l.longitude)})">
       <span><strong>${fmtTime(l.recorded_at)}</strong><small>${Number(l.latitude).toFixed(5)}, ${Number(l.longitude).toFixed(5)}</small></span>
-      <small>Precisão ${l.accuracy_m!=null?Math.round(Number(l.accuracy_m))+' m':'—'} • abrir mapa</small>
+      <small>${speedLabel(l.speed_kmh)} • precisão ${l.accuracy_m!=null?Math.round(Number(l.accuracy_m))+' m':'—'} • abrir mapa</small>
     </button>`).join(''):'<span class="muted">Nenhuma localização externa registrada hoje.</span>';
 
   if(typeof L!=='undefined'){
@@ -979,6 +980,13 @@ function timeToday(value){
 function minutesBetween(a,b){
   if(!a||!b) return 0;
   return Math.max(0,Math.round((b-a)/60000));
+}
+
+function speedLabel(value){
+  if(value==null || Number.isNaN(Number(value))) return 'Velocidade indisponível';
+  const n=Math.max(0,Number(value));
+  if(n<2) return 'Parado';
+  return `${Math.round(n)} km/h`;
 }
 
 function locationAgeLabel(ts){
@@ -1071,7 +1079,7 @@ function renderManagerEmployeeRows(rows){
       ${isExternal?`<div class="employee-location-box">
         <span>Última localização</span>
         <strong>${locText}</strong>
-        <small>${hasLocation?locationAgeLabel(p.last_location_at):'Aguardando atualização do aplicativo'}</small>
+        <small>${hasLocation?`${speedLabel(p.last_speed_kmh)} • ${locationAgeLabel(p.last_location_at)}`:'Aguardando atualização do aplicativo'}</small>
       </div>`:''}
       <div class="employee-work-actions">
         <button class="ghost" onclick="openEmployeeDetail('${emp.id}')">Ver jornada completa</button>
@@ -1086,7 +1094,7 @@ function renderManagerEmployeeRows(rows){
       <td>${formatMinutes(overtimeMinutes)}</td>
       <td><strong data-employee-overtime30-table="${emp.id}">—</strong></td>
       <td><span class="badge ${statusClass}">${status}</span></td>
-      <td>${isExternal?(hasLocation?`<button class="mini" onclick="openMapsDirections(${Number(p.last_latitude)},${Number(p.last_longitude)})">${locationAgeLabel(p.last_location_at)}</button>`:'Sem posição'):'—'}</td>
+      <td>${isExternal?(hasLocation?`<button class="mini" onclick="openMapsDirections(${Number(p.last_latitude)},${Number(p.last_longitude)})">${speedLabel(p.last_speed_kmh)} • ${locationAgeLabel(p.last_location_at)}</button>`:'Sem posição'):'—'}</td>
     </tr>`);
   });
 
@@ -1200,7 +1208,7 @@ async function loadManagerHome(){
   const [{data:emps,error:empsError},{data:events,error:eventsError},{data:presence,error:presenceError},{data:overtime,error:overtimeError},{data:schedules,error:schedulesError}]=await Promise.all([
     client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes,avatar_url').eq('active',true).order('full_name'),
     client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
-    client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,last_latitude,last_longitude,last_accuracy_m,last_location_at,updated_at'),
+    client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,last_latitude,last_longitude,last_accuracy_m,last_location_at,last_speed_kmh,updated_at'),
     client.rpc('get_overtime_snapshot'),
     client.from('work_schedules').select('employee_id,weekday,start_time,break_start,break_end,end_time,tolerance_minutes').eq('weekday',weekday)
   ]);
@@ -1290,7 +1298,7 @@ function updateManagerBottomNav(viewId){
   });
 }
 
-function buildMobileManagerMap(){
+async function buildMobileManagerMap(){
   if(typeof L==='undefined' || !$('mobileManagerMap')) return;
   if(mobileManagerMap){ mobileManagerMap.remove(); mobileManagerMap=null; }
 
@@ -1311,18 +1319,48 @@ function buildMobileManagerMap(){
     bounds.push([Number(branch.latitude),Number(branch.longitude)]);
   }
 
+  let trailRows=[];
+  try{
+    const {data}=await client.from('employee_location_updates')
+      .select('employee_id,latitude,longitude,accuracy_m,speed_kmh,recorded_at')
+      .gte('recorded_at',startToday())
+      .lte('recorded_at',endToday())
+      .order('recorded_at',{ascending:true})
+      .limit(1000);
+    trailRows=data||[];
+  }catch{}
+
+  const trailsByEmployee=new Map();
+  trailRows.forEach(row=>{
+    const arr=trailsByEmployee.get(row.employee_id)||[];
+    arr.push(row);
+    trailsByEmployee.set(row.employee_id,arr);
+  });
+
   const people=[];
   lastManagerEmployees.filter(emp=>emp.allow_external_after_checkin).forEach(emp=>{
     const p=lastManagerPresenceBy.get(emp.id);
+    const trail=trailsByEmployee.get(emp.id)||[];
+
+    if(trail.length>1){
+      const points=trail.map(x=>[Number(x.latitude),Number(x.longitude)]);
+      L.polyline(points,{weight:4,opacity:.55}).addTo(mobileManagerMap);
+      points.forEach(pt=>bounds.push(pt));
+    }
+
     if(p?.last_latitude==null || p?.last_longitude==null) return;
     const lat=Number(p.last_latitude), lng=Number(p.last_longitude);
     bounds.push([lat,lng]);
-    L.marker([lat,lng]).addTo(mobileManagerMap)
-      .bindPopup(`<strong>${esc(emp.full_name)}</strong><br>${p.is_present?'Jornada ativa':'Jornada encerrada'}<br>Última posição: ${p.last_location_at?fmtTime(p.last_location_at):'—'}`);
 
-    people.push(`<button class="mobile-map-person" onclick="openMapsDirections(${lat},${lng})">
+    L.marker([lat,lng]).addTo(mobileManagerMap)
+      .bindPopup(`<strong>${esc(emp.full_name)}</strong><br>${p.is_present?'Jornada ativa':'Jornada encerrada'}<br><strong>${speedLabel(p.last_speed_kmh)}</strong><br>Atualizado ${p.last_location_at?locationAgeLabel(p.last_location_at):'—'}`);
+
+    people.push(`<button class="mobile-map-person" onclick="openEmployeeDetail('${emp.id}')">
       ${avatarHtml(emp,'attention-avatar-photo')}
-      <span><strong>${esc(emp.full_name)}</strong><small>${p.last_location_at?locationAgeLabel(p.last_location_at):'Sem atualização'}</small></span>
+      <span>
+        <strong>${esc(emp.full_name)}</strong>
+        <small>${speedLabel(p.last_speed_kmh)} • ${p.last_location_at?locationAgeLabel(p.last_location_at):'sem atualização'}</small>
+      </span>
       <b>›</b>
     </button>`);
   });
@@ -1336,12 +1374,11 @@ function buildMobileManagerMap(){
   if(bounds.length>1) mobileManagerMap.fitBounds(bounds,{padding:[24,24],maxZoom:16});
   setTimeout(()=>mobileManagerMap?.invalidateSize(),120);
 }
-
 function openMobileMap(){
   if(!$('mobileMapSheet')) return;
   $('mobileMapSheet').classList.remove('hidden');
   document.body.classList.add('mobile-sheet-open');
-  buildMobileManagerMap();
+  buildMobileManagerMap().catch(()=>{});
 }
 
 function closeMobileMap(){
@@ -1957,7 +1994,12 @@ client?.auth.onAuthStateChange((e)=>{if(e==='SIGNED_OUT')showAuth()});
 if(client){
   client.channel('manager-presence-live')
     .on('postgres_changes',{event:'*',schema:'public',table:'employee_presence'},()=>{
-      if(me&&isManager()&&$('managerHome')?.classList.contains('active-view')) loadManagerHome();
+      if(me&&isManager()&&$('managerHome')?.classList.contains('active-view')){
+        loadManagerHome();
+        if(!$('mobileMapSheet')?.classList.contains('hidden')){
+          buildMobileManagerMap().catch(()=>{});
+        }
+      }
     })
     .subscribe();
 

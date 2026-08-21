@@ -2413,3 +2413,20 @@
     bottom:16px!important;
   }
 }
+
+
+/* ===== External live tracking v31 ===== */
+@media(max-width:900px){
+  .mobile-map-person small{
+    font-variant-numeric:tabular-nums;
+  }
+
+  .employee-location-box small{
+    font-variant-numeric:tabular-nums;
+    font-weight:700;
+  }
+
+  .mobile-full-map{
+    min-height:52vh!important;
+  }
+}
