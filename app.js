@@ -18,6 +18,91 @@ const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
 const startToday=()=>{const d=new Date();d.setHours(0,0,0,0);return d.toISOString()};
 const endToday=()=>{const d=new Date();d.setHours(23,59,59,999);return d.toISOString()};
 const initials=n=>(n||'PF').split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
+
+function avatarHtml(person,sizeClass=''){
+  const url=person?.avatar_url;
+  const name=person?.full_name||'Funcionário';
+  if(url){
+    return `<span class="person-avatar ${sizeClass}"><img src="${esc(url)}" alt="Foto de ${esc(name)}" referrerpolicy="no-referrer"></span>`;
+  }
+  return `<span class="person-avatar ${sizeClass}"><span>${esc(initials(name))}</span></span>`;
+}
+
+function renderOwnAvatar(){
+  if(!$('avatar')||!me) return;
+  if(me.avatar_url){
+    $('avatar').innerHTML=`<img src="${esc(me.avatar_url)}" alt="Sua foto" referrerpolicy="no-referrer">`;
+    $('avatar').classList.add('has-photo');
+  }else{
+    $('avatar').textContent=initials(me.full_name);
+    $('avatar').classList.remove('has-photo');
+  }
+}
+
+function pickEmployeeAvatar(employeeId,isSelf=false){
+  const input=document.createElement('input');
+  input.type='file';
+  input.accept='image/jpeg,image/png,image/webp';
+  input.style.display='none';
+  input.onchange=async()=>{
+    const file=input.files?.[0];
+    if(!file){input.remove();return;}
+    await uploadEmployeeAvatar(employeeId,file,isSelf);
+    input.remove();
+  };
+  document.body.appendChild(input);
+  input.click();
+}
+
+async function uploadEmployeeAvatar(employeeId,file,isSelf=false){
+  const allowed=['image/jpeg','image/png','image/webp'];
+  if(!allowed.includes(file.type)){
+    alert('Use uma imagem JPG, PNG ou WEBP.');
+    return;
+  }
+  if(file.size>5*1024*1024){
+    alert('A foto deve ter no máximo 5 MB.');
+    return;
+  }
+
+  const ext=file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg';
+  const path=`${employeeId}/avatar.${ext}`;
+
+  const {error:uploadError}=await client.storage
+    .from('employee-avatars')
+    .upload(path,file,{upsert:true,contentType:file.type,cacheControl:'3600'});
+
+  if(uploadError){
+    alert('Não foi possível enviar a foto: '+uploadError.message);
+    return;
+  }
+
+  const {data:pub}=client.storage.from('employee-avatars').getPublicUrl(path);
+  const url=`${pub.publicUrl}?v=${Date.now()}`;
+
+  if(isSelf){
+    const {error}=await client.rpc('set_my_avatar',{p_avatar_url:url});
+    if(error){
+      alert('A foto foi enviada, mas não foi possível atualizar seu perfil: '+error.message);
+      return;
+    }
+    me.avatar_url=url;
+    renderOwnAvatar();
+  }else{
+    const {error}=await client.from('employees').update({avatar_url:url}).eq('id',employeeId);
+    if(error){
+      alert('A foto foi enviada, mas não foi possível atualizar o funcionário: '+error.message);
+      return;
+    }
+    const emp=employeeDirectory.find(x=>x.id===employeeId);
+    if(emp) emp.avatar_url=url;
+    await loadEmployees();
+    if(isManager()) await loadManagerHome();
+  }
+}
+
+window.pickEmployeeAvatar=pickEmployeeAvatar;
+
 const dayNames=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function inviteLink(email){const u=new URL(window.location.origin);u.searchParams.set('email',email);u.searchParams.set('firstAccess','1');return u.toString()}
@@ -38,14 +123,14 @@ async function loadProfile(){
   if(userError||!user) throw new Error('Não foi possível identificar o usuário autenticado.');
 
   let {data,error}=await client.from('employees')
-    .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin')
+    .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin,avatar_url')
     .eq('user_id',user.id)
     .eq('active',true)
     .maybeSingle();
 
   if(!data && user.email){
     const fallback=await client.from('employees')
-      .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin')
+      .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin,avatar_url')
       .ilike('email', user.email)
       .eq('active',true)
       .maybeSingle();
@@ -59,6 +144,15 @@ async function loadProfile(){
   }
 
   if(error||!data) throw new Error('Seu login ainda não está vinculado a um funcionário ativo.');
+
+  const googleAvatar=user.user_metadata?.avatar_url||user.user_metadata?.picture||null;
+  if(googleAvatar && googleAvatar!==data.avatar_url){
+    const sync=await client.rpc('sync_my_avatar',{p_avatar_url:googleAvatar});
+    if(!sync.error){
+      data.avatar_url=googleAvatar;
+    }
+  }
+
   me=data;
   const {data:b}=await client.from('branches').select('id,name,address,latitude,longitude,geofence_radius_m').eq('id',me.branch_id).single();
   branch=b||null;
@@ -389,7 +483,7 @@ async function loadMyHistory(){
 }
 
 async function loadEmployees(){
-  const {data,error}=await client.from('employees').select('id,full_name,email,role,active,user_id,allow_external_after_checkin,overtime_after_minutes,lunch_zero_counts_overtime,lunch_overtime_minutes').order('full_name');
+  const {data,error}=await client.from('employees').select('id,full_name,email,role,active,user_id,allow_external_after_checkin,overtime_after_minutes,lunch_zero_counts_overtime,lunch_overtime_minutes,avatar_url').order('full_name');
   if(error){$('employeesBody').innerHTML=`<tr><td colspan="6">${esc(error.message)}</td></tr>`;return}
   const rows=data||[];
   employeeDirectory=rows;
@@ -400,6 +494,7 @@ async function loadEmployees(){
     <td><span class="badge ${e.active?'good':'neutral'}">${e.active?'Ativo':'Inativo'}</span></td>
     <td><div class="row-actions">
       ${e.email?`<button class="mini" onclick="copyInvite('${String(e.email).replace(/'/g,"\\'")}')">Copiar link</button>`:''}
+      <button class="mini" onclick="pickEmployeeAvatar('${e.id}',false)">Foto</button>
       <button class="mini" data-schedule="${e.id}">Horários</button>
     </div></td>
   </tr>`).join('');
@@ -644,7 +739,7 @@ async function openEmployeeDetail(employeeId){
   const emp=employeeDirectory.find(e=>e.id===employeeId);
   if(!emp) return;
   $('employeeDetailModal').classList.remove('hidden');
-  $('detailEmployeeName').textContent=emp.full_name;
+  $('detailEmployeeName').innerHTML=`${avatarHtml(emp,'detail-avatar')}<span>${esc(emp.full_name)}</span>`;
   $('detailEmployeeSummary').innerHTML='<span class="muted">Carregando dados...</span>';
   $('detailLocationTimeline').innerHTML='<span class="muted">Carregando localizações...</span>';
 
@@ -835,7 +930,7 @@ async function loadManagerHome(){
   const weekday=new Date().getDay();
   try{
   const [{data:emps,error:empsError},{data:events,error:eventsError},{data:presence,error:presenceError},{data:overtime,error:overtimeError},{data:schedules,error:schedulesError}]=await Promise.all([
-    client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes').eq('active',true).order('full_name'),
+    client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes,avatar_url').eq('active',true).order('full_name'),
     client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
     client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,last_latitude,last_longitude,last_accuracy_m,last_location_at,updated_at'),
     client.rpc('get_overtime_snapshot'),
@@ -1103,6 +1198,7 @@ $('useLocation').onclick=verifyLocation;
 if($('setBranchLocationBtn')) $('setBranchLocationBtn').onclick=setBranchLocation;
 if($('checkPresenceNowBtn')) $('checkPresenceNowBtn').onclick=()=>checkWebPresence(true);
 
+if($('changeOwnAvatarBtn')) $('changeOwnAvatarBtn').onclick=()=>pickEmployeeAvatar(me.id,true);
 if($('employeeMainPunchBtn')) $('employeeMainPunchBtn').onclick=()=>{
   const inside=todayEvents.length>0&&todayEvents[todayEvents.length-1].event_type==='check_in';
   saveEvent(inside?'check_out':'check_in');
