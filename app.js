@@ -12,7 +12,7 @@ function ensureSupabaseClient(){
   client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
   return client;
 }
-let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,mobileManagerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0,lastManagerPresenceBy=new Map(),lastManagerEmployees=[],lastManagerRows=[],lastManagerSchedules=new Map(),activeAttentionFilter=null;
+let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,mobileManagerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0,lastManagerPresenceBy=new Map(),lastManagerEmployees=[],lastManagerRows=[],lastManagerSchedules=new Map(),activeAttentionFilter=null,activeDetailEmployeeId=null,detailLiveReloadTimer=null;
 
 const fmtTime=iso=>new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
@@ -892,6 +892,15 @@ async function loadEmployeeOvertimeHistory(employeeId){
 }
 
 async function openEmployeeDetail(employeeId){
+  activeDetailEmployeeId=employeeId;
+  if(!detailLiveReloadTimer){
+    detailLiveReloadTimer=setInterval(()=>{
+      if(activeDetailEmployeeId && !$('employeeDetailModal')?.classList.contains('hidden')){
+        const id=activeDetailEmployeeId;
+        openEmployeeDetail(id).catch(()=>{});
+      }
+    },15000);
+  }
   const emp=employeeDirectory.find(e=>e.id===employeeId);
   if(!emp) return;
   $('employeeDetailModal').classList.remove('hidden');
@@ -937,9 +946,9 @@ async function openEmployeeDetail(employeeId){
     <div><span>Registros hoje</span><strong>${arr.length}</strong></div>`;
 
   $('detailLocationTimeline').innerHTML=locs.length?locs.slice().reverse().map(l=>`
-    <button class="location-row" onclick="openMapsDirections(${Number(l.latitude)},${Number(l.longitude)})">
+    <button class="location-row" onclick="focusEmployeeDetailMap()">
       <span><strong>${fmtTime(l.recorded_at)}</strong><small>${Number(l.latitude).toFixed(5)}, ${Number(l.longitude).toFixed(5)}</small></span>
-      <small>${speedLabel(l.speed_kmh)} • precisão ${l.accuracy_m!=null?Math.round(Number(l.accuracy_m))+' m':'—'} • abrir mapa</small>
+      <small>${speedLabel(l.speed_kmh)} • precisão ${l.accuracy_m!=null?Math.round(Number(l.accuracy_m))+' m':'—'} • ver no mapa interno</small>
     </button>`).join(''):'<span class="muted">Nenhuma localização externa registrada hoje.</span>';
 
   if(typeof L!=='undefined'){
@@ -950,8 +959,11 @@ async function openEmployeeDetail(employeeId){
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(detailMap);
     if(locs.length){
       const points=locs.map(l=>[Number(l.latitude),Number(l.longitude)]);
-      L.polyline(points).addTo(detailMap);
-      L.marker(points[points.length-1]).addTo(detailMap).bindPopup('Última localização').openPopup();
+      L.polyline(points,{weight:5,opacity:.65}).addTo(detailMap);
+      const lastLoc=locs[locs.length-1];
+      L.marker(points[points.length-1]).addTo(detailMap)
+        .bindPopup(`<strong>${esc(emp.full_name)}</strong><br>${speedLabel(lastLoc.speed_kmh)}<br>Atualizado ${locationAgeLabel(lastLoc.recorded_at)}`)
+        .openPopup();
       if(points.length>1) detailMap.fitBounds(points,{padding:[25,25],maxZoom:17});
     }
     setTimeout(()=>detailMap?.invalidateSize(),100);
@@ -963,8 +975,18 @@ async function openEmployeeDetail(employeeId){
   }
 }
 
+
+function focusEmployeeDetailMap(){
+  const mapEl=$('detailEmployeeMap');
+  if(!mapEl) return;
+  mapEl.scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>detailMap?.invalidateSize(),250);
+}
+
 function closeEmployeeDetail(){
   $('employeeDetailModal')?.classList.add('hidden');
+  activeDetailEmployeeId=null;
+  if(detailLiveReloadTimer){clearInterval(detailLiveReloadTimer);detailLiveReloadTimer=null;}
   if(detailMap){detailMap.remove();detailMap=null}
 }
 
@@ -1083,7 +1105,7 @@ function renderManagerEmployeeRows(rows){
       </div>`:''}
       <div class="employee-work-actions">
         <button class="ghost" onclick="openEmployeeDetail('${emp.id}')">Ver jornada completa</button>
-        ${hasLocation?`<button class="primary" onclick="openMapsDirections(${Number(p.last_latitude)},${Number(p.last_longitude)})">Abrir localização</button>`:''}
+        ${hasLocation?`<button class="primary" onclick="openEmployeeDetail('${emp.id}')">Ver percurso</button>`:''}
       </div>
     </article>`);
 
@@ -1094,7 +1116,7 @@ function renderManagerEmployeeRows(rows){
       <td>${formatMinutes(overtimeMinutes)}</td>
       <td><strong data-employee-overtime30-table="${emp.id}">—</strong></td>
       <td><span class="badge ${statusClass}">${status}</span></td>
-      <td>${isExternal?(hasLocation?`<button class="mini" onclick="openMapsDirections(${Number(p.last_latitude)},${Number(p.last_longitude)})">${speedLabel(p.last_speed_kmh)} • ${locationAgeLabel(p.last_location_at)}</button>`:'Sem posição'):'—'}</td>
+      <td>${isExternal?(hasLocation?`<button class="mini" onclick="openEmployeeDetail('${emp.id}')">${speedLabel(p.last_speed_kmh)} • ${locationAgeLabel(p.last_location_at)}</button>`:'Sem posição'):'—'}</td>
     </tr>`);
   });
 
@@ -1276,7 +1298,7 @@ async function loadManagerHome(){
 
   if($('mobileMapSummary')){
     $('mobileMapSummary').textContent=external
-      ?`${external} funcionário${external===1?'':'s'} com serviço externo habilitado.`
+      ?`${external} funcionário${external===1?'':'s'} externo${external===1?'':'s'} • percurso e velocidade dentro do app.`
       :'Nenhum funcionário externo configurado.';
   }
 
@@ -1998,6 +2020,9 @@ if(client){
         loadManagerHome();
         if(!$('mobileMapSheet')?.classList.contains('hidden')){
           buildMobileManagerMap().catch(()=>{});
+        }
+        if(activeDetailEmployeeId && !$('employeeDetailModal')?.classList.contains('hidden')){
+          openEmployeeDetail(activeDetailEmployeeId).catch(()=>{});
         }
       }
     })

@@ -2430,3 +2430,38 @@
     min-height:52vh!important;
   }
 }
+
+
+/* ===== Internal live route map v32 ===== */
+#detailEmployeeMap{
+  min-height:320px;
+  border-radius:18px;
+  overflow:hidden;
+  border:1px solid rgba(18,59,42,.08);
+}
+
+.location-row{
+  cursor:pointer;
+}
+
+.location-row:hover{
+  transform:translateY(-1px);
+}
+
+@media(max-width:900px){
+  #detailEmployeeMap{
+    min-height:42vh!important;
+    border-radius:16px!important;
+  }
+
+  #employeeDetailModal .modal-card,
+  #employeeDetailModal .sheet-card{
+    max-height:92vh;
+    overflow:auto;
+  }
+
+  .detail-location-section,
+  .detail-map-section{
+    margin-top:10px;
+  }
+}
