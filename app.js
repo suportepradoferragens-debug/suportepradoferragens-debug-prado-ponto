@@ -182,11 +182,14 @@ async function loadProfile(){
 
   if(isManager()){
     updateManagerNotificationButtons().catch(()=>{});
+    $('employeeBottomNav')?.classList.add('hidden');
     $('employeeNav').classList.add('hidden');
     $('managerNav').classList.remove('hidden');
     $('managerBottomNav')?.classList.remove('hidden');
     openView('managerHome');
   }else{
+    $('managerBottomNav')?.classList.add('hidden');
+    $('employeeBottomNav')?.classList.remove('hidden');
     $('managerNav').classList.add('hidden');
     $('employeeNav').classList.remove('hidden');
     openView('employeeHome');
@@ -1608,6 +1611,209 @@ async function requestNotificationPermission(){
   try{ await Notification.requestPermission(); }catch{}
 }
 
+
+let currentMirrorRows=[];
+
+function isoDateInputValue(d){
+  const x=new Date(d);
+  const y=x.getFullYear();
+  const m=String(x.getMonth()+1).padStart(2,'0');
+  const day=String(x.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function initMirrorPeriod(){
+  if(!$('mirrorStartDate')||!$('mirrorEndDate')) return;
+  const now=new Date();
+  const first=new Date(now.getFullYear(),now.getMonth(),1);
+  $('mirrorStartDate').value=isoDateInputValue(first);
+  $('mirrorEndDate').value=isoDateInputValue(now);
+}
+
+function updateEmployeeBottomNav(viewId){
+  document.querySelectorAll('#employeeBottomNav [data-mobile-employee-view]').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.mobileEmployeeView===viewId);
+  });
+}
+
+async function loadMyMirror(){
+  if(!me||isManager()||!$('mirrorList')) return;
+  const start=$('mirrorStartDate').value;
+  const end=$('mirrorEndDate').value;
+  if(!start||!end){
+    $('mirrorList').innerHTML='<div class="overtime-empty">Informe a data inicial e final.</div>';
+    return;
+  }
+
+  $('mirrorList').innerHTML='<div class="overtime-empty">Carregando espelho...</div>';
+
+  const from=new Date(start+'T00:00:00-03:00');
+  const to=new Date(end+'T23:59:59.999-03:00');
+
+  const [{data:events,error:eventError},{data:schedules,error:scheduleError},{data:rule,error:ruleError}]=await Promise.all([
+    client.from('attendance_events')
+      .select('event_type,occurred_at,receipt_code')
+      .eq('employee_id',me.id)
+      .gte('occurred_at',from.toISOString())
+      .lte('occurred_at',to.toISOString())
+      .order('occurred_at',{ascending:true}),
+    client.from('work_schedules')
+      .select('weekday,end_time,break_start,break_end')
+      .eq('employee_id',me.id),
+    client.from('employees')
+      .select('overtime_after_minutes,lunch_zero_counts_overtime,lunch_overtime_minutes')
+      .eq('id',me.id)
+      .single()
+  ]);
+
+  if(eventError||scheduleError||ruleError){
+    $('mirrorList').innerHTML='<div class="overtime-empty">Não foi possível carregar o espelho agora.</div>';
+    return;
+  }
+
+  const scheduleByDay=new Map((schedules||[]).map(s=>[Number(s.weekday),s]));
+  const grouped=new Map();
+  (events||[]).forEach(ev=>{
+    const key=localDateKey(ev.occurred_at);
+    const arr=grouped.get(key)||[];
+    arr.push(ev);
+    grouped.set(key,arr);
+  });
+
+  const rows=[];
+  for(const [dateKey,dayEvents] of grouped.entries()){
+    const ins=dayEvents.filter(e=>e.event_type==='check_in');
+    const outs=dayEvents.filter(e=>e.event_type==='check_out');
+    const firstIn=ins[0]?.occurred_at||null;
+    const lastOut=outs.length?outs[outs.length-1].occurred_at:null;
+    let worked=0;
+    let overtime=0;
+
+    if(firstIn && lastOut){
+      worked=Math.max(0,Math.floor((new Date(lastOut)-new Date(firstIn))/60000));
+      const schedule=scheduleByDay.get(localWeekdayFromKey(dateKey));
+      if(schedule?.end_time){
+        const endDate=makeLocalShiftDate(dateKey,schedule.end_time);
+        const threshold=Number(rule?.overtime_after_minutes??10);
+        const overtimeStart=endDate?new Date(endDate.getTime()+threshold*60000):null;
+        if(overtimeStart){
+          overtime=Math.max(0,Math.floor((new Date(lastOut)-overtimeStart)/60000));
+        }
+        if(
+          rule?.lunch_zero_counts_overtime!==false &&
+          schedule.break_start?.slice(0,5)==='00:00' &&
+          schedule.break_end?.slice(0,5)==='00:00'
+        ){
+          overtime+=Number(rule?.lunch_overtime_minutes??60);
+        }
+      }
+    }
+
+    rows.push({
+      dateKey,
+      firstIn,
+      lastOut,
+      worked,
+      overtime,
+      events:dayEvents.length
+    });
+  }
+
+  rows.sort((a,b)=>a.dateKey.localeCompare(b.dateKey));
+  currentMirrorRows=rows;
+
+  const workedTotal=rows.reduce((s,r)=>s+r.worked,0);
+  const overtimeTotal=rows.reduce((s,r)=>s+r.overtime,0);
+
+  $('mirrorDaysTotal').textContent=String(rows.length);
+  $('mirrorWorkedTotal').textContent=formatMinutes(workedTotal);
+  $('mirrorOvertimeTotal').textContent=formatMinutes(overtimeTotal);
+
+  $('mirrorList').innerHTML=rows.length?rows.map(r=>`
+    <article class="mirror-day-card">
+      <div class="mirror-day-date">
+        <strong>${esc(new Date(r.dateKey+'T12:00:00-03:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'}).replace('.',''))}</strong>
+        <span>${r.events} registro${r.events===1?'':'s'}</span>
+      </div>
+      <div class="mirror-day-times">
+        <div><span>Entrada</span><strong>${r.firstIn?fmtTime(r.firstIn):'—'}</strong></div>
+        <div><span>Saída</span><strong>${r.lastOut?fmtTime(r.lastOut):'—'}</strong></div>
+        <div><span>Trabalhado</span><strong>${formatMinutes(r.worked)}</strong></div>
+        <div><span>Extra</span><strong>${formatMinutes(r.overtime)}</strong></div>
+      </div>
+    </article>
+  `).join(''):'<div class="overtime-empty">Nenhum registro encontrado neste período.</div>';
+}
+
+async function downloadMyMirrorPdf(){
+  if(!currentMirrorRows.length){
+    await loadMyMirror();
+    if(!currentMirrorRows.length){
+      alert('Não há registros neste período.');
+      return;
+    }
+  }
+
+  if(!window.jspdf?.jsPDF){
+    alert('O gerador de PDF não carregou. Verifique a internet e tente novamente.');
+    return;
+  }
+
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const start=$('mirrorStartDate').value;
+  const end=$('mirrorEndDate').value;
+
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(16);
+  doc.text('PRADO PONTO - ESPELHO DE PONTO',14,16);
+
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(10);
+  doc.text(`Funcionario: ${String(me.full_name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')}`,14,23);
+  doc.text(`Periodo: ${new Date(start+'T12:00:00').toLocaleDateString('pt-BR')} a ${new Date(end+'T12:00:00').toLocaleDateString('pt-BR')}`,14,28);
+
+  let y=38;
+  doc.setFont('helvetica','bold');
+  doc.text('Data',14,y);
+  doc.text('Entrada',48,y);
+  doc.text('Saida',78,y);
+  doc.text('Trabalhado',108,y);
+  doc.text('Extra',154,y);
+  y+=4;
+  doc.line(14,y,196,y);
+  y+=6;
+
+  doc.setFont('helvetica','normal');
+  currentMirrorRows.forEach(r=>{
+    if(y>280){
+      doc.addPage();
+      y=18;
+    }
+    doc.text(new Date(r.dateKey+'T12:00:00').toLocaleDateString('pt-BR'),14,y);
+    doc.text(r.firstIn?fmtTime(r.firstIn):'-',48,y);
+    doc.text(r.lastOut?fmtTime(r.lastOut):'-',78,y);
+    doc.text(formatMinutes(r.worked).replace('min','m'),108,y);
+    doc.text(formatMinutes(r.overtime).replace('min','m'),154,y);
+    y+=7;
+  });
+
+  y+=3;
+  if(y>270){doc.addPage();y=18;}
+  doc.line(14,y,196,y);
+  y+=7;
+
+  const workedTotal=currentMirrorRows.reduce((s,r)=>s+r.worked,0);
+  const overtimeTotal=currentMirrorRows.reduce((s,r)=>s+r.overtime,0);
+  doc.setFont('helvetica','bold');
+  doc.text(`Total trabalhado: ${formatMinutes(workedTotal)}`,14,y);
+  y+=6;
+  doc.text(`Total de horas extras: ${formatMinutes(overtimeTotal)}`,14,y);
+
+  const filename=`espelho-ponto-${start}-a-${end}.pdf`;
+  doc.save(filename);
+}
+
 function openView(id){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active-view'));
   $(id).classList.add('active-view');
@@ -1621,10 +1827,15 @@ function openView(id){
   };
   $('pageTitle').textContent=map[id][0];$('pageSubtitle').textContent=map[id][1];
   if(id==='employeeHistory')loadMyHistory();
+  if(id==='employeeMirror'){
+    initMirrorPeriod();
+    loadMyMirror();
+  }
   if(id==='managerHome')loadManagerHome();
   if(id==='employees')loadEmployees();
   if(id==='managerRecords')loadManagerRecords();
   if(isManager()) updateManagerBottomNav(id);
+  else updateEmployeeBottomNav(id);
 }
 
 async function boot(){
@@ -1675,6 +1886,14 @@ if($('employeeMainPunchBtn')) $('employeeMainPunchBtn').onclick=()=>{
   const inside=todayEvents.length>0&&todayEvents[todayEvents.length-1].event_type==='check_in';
   saveEvent(inside?'check_out':'check_in');
 };
+if($('openEmployeeMirrorBtn')) $('openEmployeeMirrorBtn').onclick=()=>openView('employeeMirror');
+if($('openEmployeeHistoryBtn')) $('openEmployeeHistoryBtn').onclick=()=>openView('employeeHistory');
+if($('loadMirrorBtn')) $('loadMirrorBtn').onclick=loadMyMirror;
+if($('downloadMirrorPdfBtn')) $('downloadMirrorPdfBtn').onclick=downloadMyMirrorPdf;
+document.querySelectorAll('[data-mobile-employee-view]').forEach(btn=>{
+  btn.onclick=()=>openView(btn.dataset.mobileEmployeeView);
+});
+
 if($('employeeReceiptShortcut')) $('employeeReceiptShortcut').onclick=()=>{
   const last=[...todayEvents].reverse().find(x=>x.receipt_code);
   if(last) showReceipt(last);

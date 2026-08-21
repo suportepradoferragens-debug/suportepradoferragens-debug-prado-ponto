@@ -12,6 +12,7 @@
   <link rel="apple-touch-icon" href="icon-180.png" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 
 
@@ -125,6 +126,18 @@
         </button>
       </div>
 
+
+      <div class="employee-quick-row">
+        <button id="openEmployeeMirrorBtn" class="employee-quick-btn" type="button">
+          <span class="employee-quick-icon">⇩</span>
+          <span><strong>Baixar espelho</strong><small>PDF do meu ponto</small></span>
+        </button>
+        <button id="openEmployeeHistoryBtn" class="employee-quick-btn" type="button">
+          <span class="employee-quick-icon">≡</span>
+          <span><strong>Histórico</strong><small>Ver registros</small></span>
+        </button>
+      </div>
+
       <div id="employeeLastPunchCard" class="employee-last-punch">
         <div>
           <span>Última batida</span>
@@ -199,6 +212,45 @@
           <div class="card-head"><div><span class="eyebrow">HISTÓRICO</span><h3>Meus últimos registros</h3></div></div>
           <div class="table-wrap"><table><thead><tr><th>Data</th><th>Hora</th><th>Tipo</th><th>Geofence</th></tr></thead><tbody id="historyBody"></tbody></table></div>
         </article>
+      </section>
+
+
+      <section id="employeeMirror" class="view employee-mirror-view">
+        <div class="employee-mirror-shell">
+          <div class="employee-mirror-head">
+            <div>
+              <span class="eyebrow">MEU ESPELHO</span>
+              <h2>Espelho do ponto</h2>
+              <p>Escolha o período e baixe seu registro direto no celular.</p>
+            </div>
+          </div>
+
+          <article class="employee-mirror-card">
+            <div class="employee-mirror-filters">
+              <label>Data inicial
+                <input id="mirrorStartDate" type="date">
+              </label>
+              <label>Data final
+                <input id="mirrorEndDate" type="date">
+              </label>
+            </div>
+
+            <div class="employee-mirror-actions">
+              <button id="loadMirrorBtn" class="secondary" type="button">Atualizar período</button>
+              <button id="downloadMirrorPdfBtn" class="primary" type="button">Baixar PDF</button>
+            </div>
+
+            <div class="employee-mirror-summary">
+              <div><span>Dias com registro</span><strong id="mirrorDaysTotal">0</strong></div>
+              <div><span>Horas trabalhadas</span><strong id="mirrorWorkedTotal">0 min</strong></div>
+              <div><span>Horas extras</span><strong id="mirrorOvertimeTotal">0 min</strong></div>
+            </div>
+
+            <div id="mirrorList" class="employee-mirror-list">
+              <div class="overtime-empty">Selecione um período para carregar o espelho.</div>
+            </div>
+          </article>
+        </div>
       </section>
 
       <section id="managerHome" class="view manager-mobile-view">
@@ -559,6 +611,19 @@
     </div>
   </article>
 </div>
+
+
+<nav id="employeeBottomNav" class="employee-bottom-nav hidden" aria-label="Navegação do funcionário">
+  <button data-mobile-employee-view="employeeHome" class="active">
+    <span class="nav-icon">⌂</span><span>Hoje</span>
+  </button>
+  <button data-mobile-employee-view="employeeHistory">
+    <span class="nav-icon">≡</span><span>Histórico</span>
+  </button>
+  <button data-mobile-employee-view="employeeMirror">
+    <span class="nav-icon">⇩</span><span>Espelho</span>
+  </button>
+</nav>
 
 <nav id="managerBottomNav" class="manager-bottom-nav hidden" aria-label="Navegação do gestor">
     <button data-mobile-manager-view="managerHome" class="active">
