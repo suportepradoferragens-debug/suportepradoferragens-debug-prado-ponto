@@ -136,6 +136,18 @@ function showAuth(){$('authScreen').classList.remove('hidden');$('appShell').cla
 function showApp(){$('authScreen').classList.add('hidden');$('appShell').classList.remove('hidden')}
 function isManager(){return ['admin','manager'].includes(me?.role)}
 
+
+function shouldShowGarroPromo(date=new Date()){
+  return date.getDay()===5 || date.getDate()===5 || date.getDate()===20;
+}
+
+function renderGarroPromo(){
+  const promo=$('garroPromoBtn');
+  if(!promo) return;
+  promo.classList.toggle('hidden',!shouldShowGarroPromo());
+}
+
+
 async function loadProfile(){
   const {data:{user},error:userError}=await client.auth.getUser();
   if(userError||!user) throw new Error('Não foi possível identificar o usuário autenticado.');
@@ -179,6 +191,7 @@ async function loadProfile(){
   $('userBranch').textContent=branch?.name||'Unidade';
   renderOwnAvatar();
   $('roleLabel').textContent=isManager()?'Painel do gestor':'Área do funcionário';
+  renderGarroPromo();
 
   if(isManager()){
     updateManagerNotificationButtons().catch(()=>{});
@@ -2251,6 +2264,7 @@ document.querySelectorAll('.attention-card').forEach(btn=>{
 });
 document.querySelectorAll('[data-close-detail]').forEach(el=>el.onclick=closeEmployeeDetail);
 setInterval(()=>{ if(me&&!isManager()) checkEndShiftThanks(); },60000);
+setInterval(()=>{ if(me) renderGarroPromo(); },60000);
 setInterval(()=>{ if(me&&isManager()&&document.visibilityState==='visible') loadManagerHome(); },7000);
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
 try{ ensureSupabaseClient(); }catch(e){

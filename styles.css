@@ -2691,3 +2691,80 @@
   color:var(--muted);
   line-height:1.35;
 }
+
+
+/* ===== Garro Pastelaria scheduled promo v38 ===== */
+.topbar-actions{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-left:auto;
+}
+
+.garro-promo{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  text-decoration:none;
+  color:var(--text);
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:5px 9px 5px 5px;
+  box-shadow:var(--shadow);
+  max-width:285px;
+  transition:transform .18s ease, box-shadow .18s ease;
+}
+
+.garro-promo:hover{
+  transform:translateY(-1px);
+}
+
+.garro-promo img{
+  width:82px;
+  height:46px;
+  object-fit:cover;
+  border-radius:10px;
+  display:block;
+}
+
+.garro-promo>span{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+
+.garro-promo b{
+  font-size:12px;
+  line-height:1.15;
+}
+
+.garro-promo small{
+  font-size:9px;
+  color:var(--muted);
+  line-height:1.2;
+  margin-top:2px;
+}
+
+@media(max-width:900px){
+  .topbar-actions{
+    width:100%;
+    justify-content:flex-end;
+  }
+
+  .garro-promo{
+    margin-left:auto;
+    padding:4px;
+    border-radius:12px;
+  }
+
+  .garro-promo img{
+    width:76px;
+    height:43px;
+    border-radius:9px;
+  }
+
+  .garro-promo>span{
+    display:none;
+  }
+}
