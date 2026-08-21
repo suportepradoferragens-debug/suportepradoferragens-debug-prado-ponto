@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prado Ponto</title>
+  <meta name="theme-color" content="#123b2a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Prado Ponto" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+
+
+<script>
+(function(){
+  var oauthReturn=(location.hash||'').indexOf('access_token=')>=0 || (location.search||'').indexOf('code=')>=0;
+  if(oauthReturn) return;
+  try{
+    var found=false;
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i)||'';
+      if(k.indexOf('sb-coeqnnanqzlkkgkejbef-auth-token')>=0){ found=true; break; }
+    }
+    if(!found) location.replace('/login.html');
+  }catch(e){}
+})();
+</script>
+
+</head>
+<body>
+  <div id="authScreen" class="auth-screen">
+    <div class="auth-card">
+      <div class="brand auth-brand"><span class="brand-mark">P</span><div><strong>Prado Ponto</strong><small>Gestão de jornada</small></div></div>
+      <h1>Acessar Prado Ponto</h1>
+      <p id="authIntro">Entre com a conta Google vinculada ao e-mail cadastrado pelo gestor.</p>
+      <div id="inviteIdentity" class="invite-identity hidden">
+        <span>Convite para</span>
+        <strong id="inviteEmailLabel"></strong>
+      </div>
+      <form id="googleLoginForm" action="/login.html" method="get"><button id="googleLoginBtn" class="google-btn" type="submit"><span class="google-g">G</span><span>Continuar com Google</span></button></form>
+      <small id="authMsg" class="auth-msg">Sem senha. O acesso é identificado pelo e-mail da conta Google.</small>
+    </div>
+  </div>
+
+  <div id="appShell" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">P</span><div><strong>Prado Ponto</strong><small id="roleLabel">Jornada</small></div></div>
+
+      <div id="employeeNav">
+        <button class="nav active" data-view="employeeHome">Meu ponto</button>
+        <button class="nav" data-view="employeeHistory">Meu histórico</button>
+      </div>
+
+      <div id="managerNav" class="hidden">
+        <button class="nav active" data-view="managerHome">Visão geral</button>
+        <button class="nav" data-view="employees">Funcionários</button>
+        <button class="nav" data-view="managerRecords">Registros</button>
+      </div>
+
+      <button id="logoutBtn" class="nav logout">Sair</button>
+      <div class="sidebar-footer">Prado Ferragens • ponto digital</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><h1 id="pageTitle">Meu ponto</h1><p id="pageSubtitle">Registro de jornada</p></div>
+        <div class="user"><div class="avatar" id="avatar">PF</div><div><strong id="userName">Usuário</strong><small id="userBranch">Unidade</small></div></div>
+      </header>
+
+      <section id="employeeHome" class="view active-view">
+  <div class="employee-mobile-shell">
+    <div class="employee-mobile-hero">
+      <div class="employee-mobile-hero-top">
+        <div>
+          <span class="eyebrow">Minha jornada</span>
+          <h2 id="employeeGreeting">Olá</h2>
+          <p id="employeeDaySummary">Acompanhe seu expediente de hoje.</p>
+          <button id="changeOwnAvatarBtn" class="employee-photo-btn" type="button">Trocar foto</button>
+        </div>
+        <div id="employeeStatusBadge" class="employee-status-badge off">
+          <span class="status-dot"></span>
+          <strong id="employeeStatusLabel">Fora da empresa</strong>
+        </div>
+      </div>
+
+      <div class="employee-shift-card">
+        <div class="employee-shift-main">
+          <span>Jornada de hoje</span>
+          <strong id="employeePlannedShift">Carregando…</strong>
+        </div>
+        <div class="employee-shift-progress">
+          <div>
+            <span>Entrada</span>
+            <strong id="employeeEntryMini">—</strong>
+          </div>
+          <div>
+            <span>Saída</span>
+            <strong id="employeeExitMini">—</strong>
+          </div>
+          <div>
+            <span>Tempo hoje</span>
+            <strong id="employeeWorkedToday">0 min</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="employee-primary-action">
+        <div class="employee-action-copy">
+          <span id="employeeActionEyebrow">Pronto para começar?</span>
+          <strong id="employeeActionTitle">Registrar entrada</strong>
+          <small id="employeeActionHint">A localização será verificada antes do registro.</small>
+        </div>
+        <button id="employeeMainPunchBtn" class="employee-main-punch" type="button">
+          <span id="employeeMainPunchIcon">→</span>
+          <span id="employeeMainPunchText">Registrar entrada</span>
+        </button>
+      </div>
+
+      <div id="employeeLastPunchCard" class="employee-last-punch">
+        <div>
+          <span>Última batida</span>
+          <strong id="employeeLastPunch">Nenhum registro hoje</strong>
+        </div>
+        <button id="employeeReceiptShortcut" class="ghost compact" type="button">Ver comprovante</button>
+      </div>
+    </div>
+
+    <div class="employee-mobile-grid">
+      <div class="employee-info-card">
+        <span>Localização</span>
+        <strong id="employeeLocationSummary">Aguardando verificação</strong>
+        <small id="employeeLocationDetail">Abra o app na empresa para validar sua presença.</small>
+      </div>
+      <div class="employee-info-card">
+        <span>Registros hoje</span>
+        <strong id="employeeEventCountMobile">0</strong>
+        <small>Entradas e saídas registradas</small>
+      </div>
+    </div>
+  </div>
+
+        <div id="endShiftThanks" class="thanks-banner hidden">
+          <div class="thanks-icon" aria-hidden="true">✓</div>
+          <div>
+            <strong>Jornada concluída</strong>
+            <p>Obrigado pelo seu esforço e comprometimento hoje. Seu trabalho faz a diferença.</p>
+          </div>
+          <button id="closeThanksBtn" class="thanks-close" type="button" aria-label="Fechar">×</button>
+        </div>
+
+        <article class="card table-card" id="autoPresenceCard">
+          <div class="card-head">
+            <div><span class="eyebrow">PONTO AUTOMÁTICO</span><h3 id="autoPresenceTitle">Verificando presença...</h3></div>
+            <span class="pill" id="autoPresencePill">Localização</span>
+          </div>
+          <p class="privacy" id="autoPresenceMsg">Ao abrir o Prado Ponto, sua localização é conferida para registrar entrada ou saída quando houver mudança de presença.</p>
+          <div id="receiptBox" class="hidden">
+            <div class="grid three">
+              <article class="card"><span>Registro</span><strong id="receiptType">—</strong><small id="receiptDate">—</small></article>
+              <article class="card"><span>Horário</span><strong id="receiptTime">—</strong><small>Servidor</small></article>
+              <article class="card"><span>Comprovante</span><strong id="receiptCode" style="font-size:14px">—</strong><small>Guarde este código</small></article>
+            </div>
+          </div>
+          <div class="actions">
+            <button id="checkPresenceNowBtn" class="primary">Verificar presença agora</button>
+          </div>
+        </article>
+        <div class="hero-card"><div><span class="eyebrow">STATUS ATUAL</span><h2 id="statusText">Carregando...</h2><p id="statusHint">Consultando registros.</p></div><div class="status-orb" id="statusOrb"></div></div>
+        <div class="grid three">
+          <article class="card"><span>Entrada</span><strong id="checkIn">—</strong><small>Hoje</small></article>
+          <article class="card"><span>Saída</span><strong id="checkOut">—</strong><small>Hoje</small></article>
+          <article class="card"><span>Registros</span><strong id="eventCount">0</strong><small>Hoje</small></article>
+        </div>
+        <div class="grid two">
+          <article class="card wide">
+            <div class="card-head"><div><span class="eyebrow">PONTO</span><h3>Registrar jornada</h3></div><span class="pill" id="savePill">Banco conectado</span></div>
+            <div class="actions"><button id="checkInBtn" class="primary">Registrar entrada</button><button id="checkOutBtn" class="secondary">Registrar saída</button><button id="useLocation" class="ghost">Verificar localização</button></div>
+            <p class="privacy" id="locationInfo">A localização só é lida quando você solicitar.</p>
+          </article>
+          <article class="card wide"><div class="card-head"><div><span class="eyebrow">HOJE</span><h3>Linha do tempo</h3></div></div><div id="timeline" class="timeline"></div></article>
+        </div>
+        <article class="card table-card">
+          <div class="card-head"><div><span class="eyebrow">MINHA JORNADA</span><h3>Horários definidos pelo gestor</h3></div></div>
+          <div id="mySchedule" class="schedule-summary">Carregando horários...</div>
+        </article>
+      </section>
+
+      <section id="employeeHistory" class="view">
+        <article class="card table-card">
+          <div class="card-head"><div><span class="eyebrow">HISTÓRICO</span><h3>Meus últimos registros</h3></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Data</th><th>Hora</th><th>Tipo</th><th>Geofence</th></tr></thead><tbody id="historyBody"></tbody></table></div>
+        </article>
+      </section>
+
+      <section id="managerHome" class="view manager-mobile-view">
+        <div class="mobile-admin-hero">
+          <div>
+            <span class="eyebrow">PAINEL DO GESTOR</span>
+            <h2>Bom dia</h2>
+            <p>Acompanhe a equipe de hoje.</p>
+          </div>
+          <button id="mobileRefreshBtn" class="mobile-icon-btn" aria-label="Atualizar">↻</button>
+        </div>
+
+        <section class="attention-panel">
+          <div class="mobile-section-title attention-title">
+            <div><span class="eyebrow">ATENÇÃO AGORA</span><h3>O que precisa de você</h3></div>
+          </div>
+          <div class="attention-grid">
+            <button class="attention-card" data-attention="late">
+              <span class="attention-dot"></span>
+              <div><strong id="lateTotal">0</strong><small>Atrasados</small></div>
+            </button>
+            <button class="attention-card" data-attention="overtime">
+              <span class="attention-dot"></span>
+              <div><strong id="attentionOvertimeTotal">0</strong><small>Hora extra</small></div>
+            </button>
+            <button class="attention-card" data-attention="external">
+              <span class="attention-dot"></span>
+              <div><strong id="attentionExternalTotal">0</strong><small>Externos</small></div>
+            </button>
+            <button class="attention-card" data-attention="open_shift">
+              <span class="attention-dot"></span>
+              <div><strong id="openShiftTotal">0</strong><small>Sem saída</small></div>
+            </button>
+          </div>
+          <div id="attentionList" class="attention-list"></div>
+        </section>
+
+        <div class="manager-mobile-head">
+          <div>
+            <span class="eyebrow">ACOMPANHAMENTO</span>
+            <h2>Equipe em tempo real</h2>
+            <p class="privacy">Jornada, hora extra e última localização informada durante o trabalho.</p>
+          </div>
+          <button id="refreshManagerDashboard" class="ghost">Atualizar</button>
+        </div>
+
+        <div class="grid four manager-kpis">
+          <article class="card"><span>Funcionários ativos</span><strong id="employeeTotal">0</strong><small>Equipe</small></article>
+          <article class="card"><span>Em jornada</span><strong id="presentTotal">0</strong><small>Agora</small></article>
+          <article class="card"><span>Em hora extra</span><strong id="overtimeTotal">0</strong><small>Agora</small></article>
+          <article class="card"><span>Serviço externo</span><strong id="externalTotal">0</strong><small>Equipe liberada</small></article>
+        </div>
+
+        <div class="mobile-section-title">
+          <div><span class="eyebrow">AGORA</span><h3>Equipe em andamento</h3></div>
+        </div>
+
+        <article class="mobile-map-preview" id="mobileMapPreview">
+          <div>
+            <span class="eyebrow">LOCALIZAÇÃO</span>
+            <h3>Ver equipe no mapa</h3>
+            <p id="mobileMapSummary">Funcionários externos e últimas posições.</p>
+          </div>
+          <button id="openMobileMapBtn" class="mobile-map-btn">Abrir mapa</button>
+        </article>
+
+        <article class="card map-card desktop-map-card">
+          <div class="card-head">
+            <div><span class="eyebrow">MAPA DA EQUIPE EXTERNA</span><h3>Última localização durante a jornada</h3></div>
+            <span class="pill" id="mapUpdatedAt">—</span>
+          </div>
+          <div id="managerMap" class="manager-map"></div>
+          <p class="privacy">A posição é atualizada somente para funcionários autorizados a serviço externo e com jornada ativa. No PWA, a frequência depende de o aplicativo permanecer em uso.</p>
+        </article>
+
+        <article class="card table-card">
+          <div class="card-head">
+            <div><span class="eyebrow">EQUIPE</span><h3>Dados do trabalho de hoje</h3></div>
+            <select id="managerTeamFilter" class="manager-team-filter">
+              <option value="all">Todos</option>
+              <option value="attention">Com atenção</option>
+              <option value="active">Em jornada</option>
+              <option value="external">Serviço externo</option>
+              <option value="overtime">Hora extra</option>
+            </select>
+          </div>
+          <div id="managerEmployeeCards" class="manager-employee-cards"></div>
+          <div class="table-wrap manager-desktop-table">
+            <table>
+              <thead><tr><th>Funcionário</th><th>Entrada</th><th>Saída</th><th>Hora extra</th><th>Status</th><th>Localização</th></tr></thead>
+              <tbody id="teamBody"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card table-card admin-settings-card">
+          <div class="card-head">
+            <div><span class="eyebrow">CONFIGURAÇÕES</span><h3>Localização da unidade</h3></div>
+            <span class="pill" id="branchLocationStatus">Não configurado</span>
+          </div>
+          <p class="privacy">Use esta configuração apenas quando estiver fisicamente na unidade.</p>
+          <div class="actions">
+            <button id="setBranchLocationBtn" class="primary">Definir localização da unidade neste aparelho</button>
+          </div>
+          <div class="grid three">
+            <article class="card"><span>Raio permitido</span><strong id="branchRadius">80 m</strong><small>Geofence</small></article>
+            <article class="card"><span>Latitude</span><strong id="branchLat">—</strong><small>Unidade</small></article>
+            <article class="card"><span>Longitude</span><strong id="branchLng">—</strong><small>Unidade</small></article>
+          </div>
+          <p class="privacy" id="branchLocationMsg">A localização ainda não foi definida.</p>
+        </article>
+      </section>
+
+
+      <div id="mobileMapSheet" class="mobile-map-sheet hidden">
+        <div class="mobile-map-sheet-head">
+          <div>
+            <span class="eyebrow">LOCALIZAÇÃO DA EQUIPE</span>
+            <h3>Mapa em tempo real</h3>
+          </div>
+          <button id="closeMobileMapBtn" class="mobile-icon-btn" aria-label="Fechar">×</button>
+        </div>
+        <div id="mobileManagerMap" class="mobile-full-map"></div>
+        <div id="mobileMapPeople" class="mobile-map-people"></div>
+      </div>
+
+      <div id="employeeDetailModal" class="detail-modal hidden">
+        <div class="detail-backdrop" data-close-detail></div>
+        <article class="detail-sheet">
+          <div class="detail-sheet-head">
+            <div><span class="eyebrow">FUNCIONÁRIO</span><h3 id="detailEmployeeName">Detalhes</h3></div>
+            <button class="thanks-close" data-close-detail aria-label="Fechar">×</button>
+          </div>
+          <div id="detailEmployeeSummary" class="detail-summary"></div>
+          <div id="detailEmployeeMap" class="detail-map"></div>
+          <div>
+            <h4>Localizações registradas hoje</h4>
+            <div id="detailLocationTimeline" class="location-timeline"></div>
+          </div>
+        </article>
+      </div>
+
+            <section id="employees" class="view">
+        <div class="grid two">
+          <article class="card wide">
+            <span class="eyebrow">NOVO FUNCIONÁRIO</span><h3>Cadastrar funcionário</h3>
+            <label>Nome completo<input id="newName" type="text" placeholder="Ex.: Carlos da Silva"></label>
+            <label>E-mail<input id="newEmail" type="email" placeholder="funcionario@empresa.com"></label>
+            <label>Perfil
+              <select id="newRole">
+                <option value="employee">Funcionário</option>
+                <option value="manager">Gestor</option>
+              </select>
+            </label>
+            <button id="createEmployeeBtn" class="primary">Criar cadastro</button>
+            <p class="privacy" id="employeeCreateMsg">Depois do cadastro, envie o link de convite. O funcionário entra com o Google usando esse mesmo e-mail.</p>
+          </article>
+          <article class="card wide">
+            <span class="eyebrow">COMO FUNCIONA</span><h3>Fluxo do funcionário</h3>
+            <div class="steps">
+              <div><strong>1</strong><span>Gestor cria nome e e-mail.</span></div>
+              <div><strong>2</strong><span>Funcionário abre o link e toca em Continuar com Google.</span></div>
+              <div><strong>3</strong><span>O sistema confere o e-mail Google e vincula o cadastro.</span></div>
+              <div><strong>4</strong><span>Ele passa a ver somente o próprio ponto.</span></div>
+            </div>
+          </article>
+        </div>
+        <article class="card table-card">
+          <div class="card-head"><div><span class="eyebrow">CADASTROS</span><h3>Funcionários</h3></div><button id="refreshEmployees" class="ghost">Atualizar</button></div>
+          <div class="table-wrap"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Acesso</th><th>Status</th><th>Ações</th></tr></thead><tbody id="employeesBody"></tbody></table></div>
+        </article>
+
+        <article class="card table-card">
+          <div class="card-head"><div><span class="eyebrow">JORNADA</span><h3>Definir horários do funcionário</h3></div><span class="pill">Gestor</span></div>
+          <div class="schedule-form">
+            <label>Funcionário
+              <select id="scheduleEmployee"><option value="">Selecione...</option></select>
+            </label>
+
+            <p class="privacy">Defina os horários individualmente por dia. Assim o sábado pode ter uma jornada menor sem alterar segunda a sexta.</p>
+
+            <div id="dayScheduleEditor" class="day-schedule-editor">
+              <div class="day-schedule-head">
+                <span>Dia</span><span>Trabalha</span><span>Entrada</span><span>Intervalo</span><span>Retorno</span><span>Saída</span><span>Tolerância</span>
+              </div>
+
+              <div class="day-schedule-row" data-weekday="1">
+                <strong>Segunda</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="12:00">
+                <input class="dayBreakEnd" type="time" value="13:00">
+                <input class="dayEnd" type="time" value="17:48">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row" data-weekday="2">
+                <strong>Terça</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="12:00">
+                <input class="dayBreakEnd" type="time" value="13:00">
+                <input class="dayEnd" type="time" value="17:48">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row" data-weekday="3">
+                <strong>Quarta</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="12:00">
+                <input class="dayBreakEnd" type="time" value="13:00">
+                <input class="dayEnd" type="time" value="17:48">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row" data-weekday="4">
+                <strong>Quinta</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="12:00">
+                <input class="dayBreakEnd" type="time" value="13:00">
+                <input class="dayEnd" type="time" value="17:48">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row" data-weekday="5">
+                <strong>Sexta</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="12:00">
+                <input class="dayBreakEnd" type="time" value="13:00">
+                <input class="dayEnd" type="time" value="17:48">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row saturday-row" data-weekday="6">
+                <strong>Sábado</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="">
+                <input class="dayBreakEnd" type="time" value="">
+                <input class="dayEnd" type="time" value="12:00">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row" data-weekday="0">
+                <strong>Domingo</strong><input class="workDay" type="checkbox">
+                <input class="dayStart" type="time" value="">
+                <input class="dayBreakStart" type="time" value="">
+                <input class="dayBreakEnd" type="time" value="">
+                <input class="dayEnd" type="time" value="">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+            </div>
+
+            <div class="actions">
+              <button id="saveScheduleBtn" class="primary">Salvar jornada semanal</button>
+            </div>
+            <p id="scheduleMsg" class="privacy">Selecione um funcionário para carregar os horários.</p>
+            <div id="schedulePreview" class="schedule-summary"></div>
+          </div>
+        </article>
+        <article class="card table-card">
+          <div class="card-head">
+            <div><span class="eyebrow">REGRAS INDIVIDUAIS</span><h3>Hora extra e serviço externo</h3></div>
+            <span class="pill">Por funcionário</span>
+          </div>
+          <div class="grid two">
+            <label>Funcionário
+              <select id="ruleEmployee"><option value="">Selecione...</option></select>
+            </label>
+            <label>Iniciar hora extra após o expediente
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="ruleOvertimeAfter" type="number" min="0" max="240" value="10">
+                <span>minutos</span>
+              </div>
+            </label>
+          </div>
+
+          <label class="rule-toggle">
+            <input id="ruleExternal" type="checkbox">
+            <span><strong>Permitir serviço externo após chegada</strong><br>
+            <small>Depois que o funcionário confirmar a chegada na empresa, sair do geofence não encerra a jornada automaticamente. A saída deverá ser batida manualmente.</small></span>
+          </label>
+
+          <label class="rule-toggle">
+            <input id="ruleLunchZero" type="checkbox" checked>
+            <span><strong>Almoço 00:00 conta como hora extra</strong><br>
+            <small>Use 00:00 / 00:00 somente quando o funcionário trabalhar o período de almoço. Para dia sem almoço previsto, deixe o intervalo vazio.</small></span>
+          </label>
+
+          <label>Minutos de hora extra quando almoço = 00:00
+            <input id="ruleLunchMinutes" type="number" min="0" max="240" value="60">
+          </label>
+
+          <div class="actions">
+            <button id="saveEmployeeRulesBtn" class="primary">Salvar regras do funcionário</button>
+          </div>
+          <p id="ruleMsg" class="privacy">Selecione um funcionário para editar as regras.</p>
+        </article>
+
+      </section>
+
+      <section id="managerRecords" class="view">
+        <article class="card table-card">
+          <div class="card-head"><div><span class="eyebrow">REGISTROS</span><h3>Últimos pontos da equipe</h3></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Funcionário</th><th>Data</th><th>Hora</th><th>Tipo</th><th>Geofence</th></tr></thead><tbody id="recordsBody"></tbody></table></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+<nav id="managerBottomNav" class="manager-bottom-nav hidden" aria-label="Navegação do gestor">
+    <button data-mobile-manager-view="managerHome" class="active">
+      <span class="nav-icon">⌂</span><span>Início</span>
+    </button>
+    <button data-mobile-manager-view="employees">
+      <span class="nav-icon">◉</span><span>Equipe</span>
+    </button>
+    <button data-mobile-manager-action="map">
+      <span class="nav-icon">⌖</span><span>Mapa</span>
+    </button>
+    <button data-mobile-manager-view="managerRecords">
+      <span class="nav-icon">≡</span><span>Registros</span>
+    </button>
+  </nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+if(!window.supabase){
+  document.write('<script src="https://unpkg.com/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"><\/script>');
+}
+</script>
+<script src="app.js"></script></body>
+</html>
