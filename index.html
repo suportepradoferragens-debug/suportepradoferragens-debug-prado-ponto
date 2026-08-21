@@ -25,12 +25,18 @@
         <span>Convite para</span>
         <strong id="inviteEmailLabel"></strong>
       </div>
-      <a id="googleLoginBtn" class="google-btn google-login-link"
-         href="https://coeqnnanqzlkkgkejbef.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Fsuportepradoferragens-debug-prado-p.vercel.app"
-         rel="noopener">
-        <span class="google-g">G</span>
-        <span>Continuar com Google</span>
-      </a>
+      <form id="googleLoginForm"
+            action="https://coeqnnanqzlkkgkejbef.supabase.co/auth/v1/authorize"
+            method="get"
+            target="_top"
+            class="google-login-form">
+        <input type="hidden" name="provider" value="google">
+        <input type="hidden" name="redirect_to" value="https://suportepradoferragens-debug-prado-p.vercel.app">
+        <button id="googleLoginBtn" class="google-btn" type="submit">
+          <span class="google-g">G</span>
+          <span>Continuar com Google</span>
+        </button>
+      </form>
       <small id="authMsg" class="auth-msg">Sem senha. O acesso é identificado pelo e-mail da conta Google.</small>
     </div>
   </div>

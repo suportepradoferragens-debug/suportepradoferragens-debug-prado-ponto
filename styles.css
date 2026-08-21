@@ -316,3 +316,10 @@
   touch-action:manipulation;
 }
 .google-login-link:visited{color:inherit}
+
+.google-login-form{margin:0;padding:0}
+.google-login-form .google-btn{
+  -webkit-appearance:none;
+  appearance:none;
+  touch-action:manipulation;
+}
