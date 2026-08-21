@@ -202,35 +202,60 @@ async function loadProfile(){
 
 
 
-function startExternalLocationTracking(){
-  if(isManager() || !me?.allow_external_after_checkin || !navigator.geolocation || externalLocationWatchId!==null) return;
+async function sendExternalLocationPosition(pos){
+  if(isManager() || !me?.allow_external_after_checkin || !pos?.coords) return;
+  const now=Date.now();
+  if(now-lastExternalLocationSentAt<5000) return;
 
-  externalLocationWatchId=navigator.geolocation.watchPosition(async pos=>{
-    const now=Date.now();
-    if(now-lastExternalLocationSentAt<15000) return;
-    if(document.visibilityState==='hidden') return;
-
-    lastExternalLocationSentAt=now;
-    const {error}=await client.rpc('register_external_location',{
-      p_latitude:pos.coords.latitude,
-      p_longitude:pos.coords.longitude,
-      p_accuracy_m:pos.coords.accuracy
-    });
-
-    if(error){
-      const msg=String(error.message||'');
-      if(msg.includes('shift_not_active') || msg.includes('external_location_not_enabled')){
-        if(externalLocationWatchId!==null){
-          navigator.geolocation.clearWatch(externalLocationWatchId);
-          externalLocationWatchId=null;
-        }
-      }
-    }
-  },()=>{},{
-    enableHighAccuracy:true,
-    maximumAge:30000,
-    timeout:20000
+  lastExternalLocationSentAt=now;
+  const {error}=await client.rpc('register_external_location',{
+    p_latitude:pos.coords.latitude,
+    p_longitude:pos.coords.longitude,
+    p_accuracy_m:pos.coords.accuracy
   });
+
+  if(error){
+    const msg=String(error.message||'');
+    if(msg.includes('shift_not_active') || msg.includes('external_location_not_enabled')){
+      stopExternalLocationTracking();
+    }
+  }
+}
+
+function stopExternalLocationTracking(){
+  if(externalLocationWatchId!==null && navigator.geolocation){
+    navigator.geolocation.clearWatch(externalLocationWatchId);
+  }
+  externalLocationWatchId=null;
+}
+
+function startExternalLocationTracking(forceRestart=false){
+  if(isManager() || !me?.allow_external_after_checkin || !navigator.geolocation) return;
+
+  if(forceRestart) stopExternalLocationTracking();
+  if(externalLocationWatchId!==null) return;
+
+  navigator.geolocation.getCurrentPosition(
+    pos=>sendExternalLocationPosition(pos).catch(()=>{}),
+    ()=>{},
+    {enableHighAccuracy:true,maximumAge:0,timeout:15000}
+  );
+
+  externalLocationWatchId=navigator.geolocation.watchPosition(
+    pos=>sendExternalLocationPosition(pos).catch(()=>{}),
+    ()=>{},
+    {
+      enableHighAccuracy:true,
+      maximumAge:0,
+      timeout:15000
+    }
+  );
+}
+
+function resumeExternalLocationTracking(){
+  if(!me || isManager() || !me.allow_external_after_checkin) return;
+  lastExternalLocationSentAt=0;
+  startExternalLocationTracking(true);
 }
 
 function renderBranchLocation(){
@@ -1298,7 +1323,7 @@ async function loadManagerHome(){
 
   if($('mobileMapSummary')){
     $('mobileMapSummary').textContent=external
-      ?`${external} funcionário${external===1?'':'s'} externo${external===1?'':'s'} • percurso e velocidade dentro do app.`
+      ?`${external} funcionário${external===1?'':'s'} externo${external===1?'':'s'} • percurso e velocidade no app enquanto o GPS estiver ativo.`
       :'Nenhum funcionário externo configurado.';
   }
 
@@ -2045,9 +2070,18 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'&&me&&!isManager()){
     checkWebPresence(false);
     checkEndShiftThanks();
+    resumeExternalLocationTracking();
   }else if(document.visibilityState==='visible'&&me&&isManager()){
     loadManagerHome();
   }
+});
+
+window.addEventListener('focus',()=>{
+  if(me&&!isManager()) resumeExternalLocationTracking();
+});
+
+window.addEventListener('pageshow',()=>{
+  if(me&&!isManager()) resumeExternalLocationTracking();
 });
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));

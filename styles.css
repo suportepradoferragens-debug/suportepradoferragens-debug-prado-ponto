@@ -2465,3 +2465,10 @@
     margin-top:10px;
   }
 }
+
+
+/* ===== GPS resume reliability v33 ===== */
+.external-gps-note{
+  font-size:10px;
+  color:var(--muted);
+}
