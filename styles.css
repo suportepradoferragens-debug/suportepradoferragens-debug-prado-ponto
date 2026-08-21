@@ -307,3 +307,12 @@
   .manager-team-filter{max-width:140px}
   .detail-summary{grid-template-columns:repeat(2,1fr)!important}
 }
+
+.google-login-link{
+  text-decoration:none;
+  box-sizing:border-box;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.google-login-link:visited{color:inherit}
