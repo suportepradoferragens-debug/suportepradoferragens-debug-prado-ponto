@@ -1,4 +1,4 @@
-const CACHE='prado-ponto-v29';
+const CACHE='prado-ponto-v30';
 self.addEventListener('install',()=>self.skipWaiting());
 self.addEventListener('activate',event=>event.waitUntil((async()=>{
   const keys=await caches.keys();
