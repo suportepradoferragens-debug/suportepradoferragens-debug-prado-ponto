@@ -2,7 +2,7 @@ const SUPABASE_URL='https://coeqnnanqzlkkgkejbef.supabase.co';
 const SUPABASE_KEY='sb_publishable_1qD2SXfcWcWJ7AcvrlmErQ_VI6GZg8c';
 const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
-let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0;
+let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,mobileManagerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0,lastManagerPresenceBy=new Map(),lastManagerEmployees=[],lastManagerRows=[],lastManagerSchedules=new Map(),activeAttentionFilter=null;
 
 const fmtTime=iso=>new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
@@ -62,6 +62,7 @@ async function loadProfile(){
   if(isManager()){
     $('employeeNav').classList.add('hidden');
     $('managerNav').classList.remove('hidden');
+    $('managerBottomNav')?.classList.remove('hidden');
     openView('managerHome');
   }else{
     $('managerNav').classList.add('hidden');
@@ -557,10 +558,11 @@ async function openEmployeeDetail(employeeId){
   $('detailEmployeeSummary').innerHTML='<span class="muted">Carregando dados...</span>';
   $('detailLocationTimeline').innerHTML='<span class="muted">Carregando localizações...</span>';
 
-  const [{data:events},{data:locations},{data:overtime}]=await Promise.all([
+  const [{data:events},{data:locations},{data:overtime},{data:schedule}]=await Promise.all([
     client.from('attendance_events').select('event_type,occurred_at,automatic,receipt_code').eq('employee_id',employeeId).gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
     client.from('employee_location_updates').select('latitude,longitude,accuracy_m,recorded_at').eq('employee_id',employeeId).gte('recorded_at',startToday()).lte('recorded_at',endToday()).order('recorded_at',{ascending:true}).limit(300),
-    client.rpc('get_overtime_snapshot')
+    client.rpc('get_overtime_snapshot'),
+    client.from('work_schedules').select('start_time,break_start,break_end,end_time,tolerance_minutes').eq('employee_id',employeeId).eq('weekday',new Date().getDay()).maybeSingle()
   ]);
 
   const arr=events||[];
@@ -568,11 +570,23 @@ async function openEmployeeDetail(employeeId){
   const ins=arr.filter(x=>x.event_type==='check_in');
   const outs=arr.filter(x=>x.event_type==='check_out');
 
+  let workedMinutes=0;
+  if(ins.length){
+    const startWorked=new Date(ins[0].occurred_at);
+    const endWorked=outs.length?new Date(outs[outs.length-1].occurred_at):new Date();
+    workedMinutes=minutesBetween(startWorked,endWorked);
+  }
+  const scheduleText=schedule?`${schedule.start_time?.slice(0,5)||'—'} → ${schedule.end_time?.slice(0,5)||'—'}`:'Sem jornada hoje';
+
   $('detailEmployeeSummary').innerHTML=`
+    <div><span>Previsto</span><strong>${scheduleText}</strong></div>
     <div><span>Entrada</span><strong>${ins.length?fmtTime(ins[0].occurred_at):'—'}</strong></div>
     <div><span>Saída</span><strong>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</strong></div>
+    <div><span>Tempo em jornada</span><strong>${formatMinutes(workedMinutes)}</strong></div>
     <div><span>Hora extra</span><strong>${formatMinutes(ot?.total_overtime_minutes||0)}</strong></div>
-    <div><span>Almoço extra</span><strong>${formatMinutes(ot?.lunch_overtime_minutes||0)}</strong></div>`;
+    <div><span>Almoço extra</span><strong>${formatMinutes(ot?.lunch_overtime_minutes||0)}</strong></div>
+    <div><span>Última posição</span><strong>${locs.length?locationAgeLabel(locs[locs.length-1].recorded_at):'Sem posição'}</strong></div>
+    <div><span>Registros hoje</span><strong>${arr.length}</strong></div>`;
 
   const locs=locations||[];
   $('detailLocationTimeline').innerHTML=locs.length?locs.slice().reverse().map(l=>`
@@ -602,54 +616,94 @@ function closeEmployeeDetail(){
   if(detailMap){detailMap.remove();detailMap=null}
 }
 
-async function loadManagerHome(){
-  const [{data:emps},{data:events},{data:presence},{data:overtime}]=await Promise.all([
-    client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes').eq('active',true).order('full_name'),
-    client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
-    client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,last_latitude,last_longitude,last_accuracy_m,last_location_at,updated_at'),
-    client.rpc('get_overtime_snapshot')
-  ]);
 
-  const employees=emps||[];
-  employeeDirectory=employeeDirectory.length?employeeDirectory:employees;
-  const by=new Map();
-  (events||[]).forEach(ev=>{const arr=by.get(ev.employee_id)||[];arr.push(ev);by.set(ev.employee_id,arr)});
-  const presenceBy=new Map((presence||[]).map(p=>[p.employee_id,p]));
-  const overtimeBy=new Map((overtime||[]).map(o=>[o.employee_id,o]));
+function timeToday(value){
+  if(!value) return null;
+  const [h,m]=String(value).slice(0,5).split(':').map(Number);
+  const d=new Date();
+  d.setHours(h,m,0,0);
+  return d;
+}
 
-  let activeShift=0,overtimeNow=0,external=0;
+function minutesBetween(a,b){
+  if(!a||!b) return 0;
+  return Math.max(0,Math.round((b-a)/60000));
+}
+
+function locationAgeLabel(ts){
+  if(!ts) return 'Sem atualização';
+  const mins=Math.max(0,Math.floor((Date.now()-new Date(ts).getTime())/60000));
+  if(mins<1) return 'agora';
+  if(mins===1) return 'há 1 min';
+  if(mins<60) return `há ${mins} min`;
+  const h=Math.floor(mins/60);
+  return `há ${h}h`;
+}
+
+function attentionLabel(row){
+  const parts=[];
+  if(row.isLate) parts.push('Atrasado');
+  if(row.overtimeMinutes>0 && row.onShift) parts.push(`Hora extra ${formatMinutes(row.overtimeMinutes)}`);
+  if(row.isExternalActive) parts.push('Serviço externo');
+  if(row.openShiftLate) parts.push('Sem saída');
+  return parts.join(' • ');
+}
+
+function renderAttentionPanel(rows){
+  const late=rows.filter(r=>r.isLate);
+  const overtime=rows.filter(r=>r.overtimeMinutes>0&&r.onShift);
+  const external=rows.filter(r=>r.isExternalActive);
+  const openShift=rows.filter(r=>r.openShiftLate);
+
+  if($('lateTotal')) $('lateTotal').textContent=late.length;
+  if($('attentionOvertimeTotal')) $('attentionOvertimeTotal').textContent=overtime.length;
+  if($('attentionExternalTotal')) $('attentionExternalTotal').textContent=external.length;
+  if($('openShiftTotal')) $('openShiftTotal').textContent=openShift.length;
+
+  const attentionRows=rows.filter(r=>r.isLate||r.openShiftLate||(r.overtimeMinutes>0&&r.onShift)||r.isExternalActive);
+  if(!$('attentionList')) return;
+
+  $('attentionList').innerHTML=attentionRows.length?attentionRows.slice(0,6).map(r=>`
+    <button class="attention-person" onclick="openEmployeeDetail('${r.emp.id}')">
+      <div class="attention-person-main">
+        <span class="attention-avatar">${esc(r.emp.full_name.split(' ').slice(0,2).map(x=>x[0]||'').join('').toUpperCase())}</span>
+        <span><strong>${esc(r.emp.full_name)}</strong><small>${attentionLabel(r)}</small></span>
+      </div>
+      <b>›</b>
+    </button>`).join(''):'<div class="all-good-card"><strong>Tudo em ordem</strong><small>Nenhuma exceção importante agora.</small></div>';
+}
+
+function applyManagerTeamFilter(){
+  const filter=$('managerTeamFilter')?.value||'all';
+  let rows=lastManagerRows.slice();
+  if(filter==='attention') rows=rows.filter(r=>r.isLate||r.openShiftLate||(r.overtimeMinutes>0&&r.onShift));
+  if(filter==='active') rows=rows.filter(r=>r.onShift);
+  if(filter==='external') rows=rows.filter(r=>r.isExternal);
+  if(filter==='overtime') rows=rows.filter(r=>r.overtimeMinutes>0);
+
+  if(activeAttentionFilter==='late') rows=rows.filter(r=>r.isLate);
+  if(activeAttentionFilter==='overtime') rows=rows.filter(r=>r.overtimeMinutes>0&&r.onShift);
+  if(activeAttentionFilter==='external') rows=rows.filter(r=>r.isExternalActive);
+  if(activeAttentionFilter==='open_shift') rows=rows.filter(r=>r.openShiftLate);
+
+  renderManagerEmployeeRows(rows);
+}
+
+function renderManagerEmployeeRows(rows){
   const cards=[];
   const tableRows=[];
 
-  employees.forEach(emp=>{
-    const arr=by.get(emp.id)||[];
-    const ins=arr.filter(x=>x.event_type==='check_in');
-    const outs=arr.filter(x=>x.event_type==='check_out');
-    const p=presenceBy.get(emp.id);
-    const ot=overtimeBy.get(emp.id);
-    const onShift=!!p?.is_present;
-    const overtimeMinutes=Number(ot?.total_overtime_minutes||0);
-    const lunchExtra=Number(ot?.lunch_overtime_minutes||0);
-    const isExternal=!!emp.allow_external_after_checkin;
-    const hasLocation=p?.last_latitude!=null&&p?.last_longitude!=null;
-    const outside=isExternal&&onShift&&!p?.geofence_verified;
-
-    if(onShift) activeShift++;
-    if(overtimeMinutes>0&&onShift) overtimeNow++;
-    if(isExternal) external++;
-
-    const status=outside?'Em serviço externo':onShift?'Em jornada':'Fora da empresa';
-    const statusClass=onShift?'good':'neutral';
-    const locText=hasLocation
-      ?`${Number(p.last_latitude).toFixed(5)}, ${Number(p.last_longitude).toFixed(5)}`
-      :(isExternal?'Sem posição recente':'Não aplicável');
-    const locTime=p?.last_location_at?fmtTime(p.last_location_at):'—';
+  rows.forEach(r=>{
+    const {emp,ins,outs,p,overtimeMinutes,lunchExtra,isExternal,onShift,isExternalActive,hasLocation,status,statusClass,locText,locTime,schedule,isLate,openShiftLate}=r;
+    const issueChip=isLate?'<span class="issue-chip">Atraso</span>':openShiftLate?'<span class="issue-chip">Sem saída</span>':overtimeMinutes>0?'<span class="issue-chip">Hora extra</span>':'';
+    const planned=schedule?`${schedule.start_time?.slice(0,5)||'—'} → ${schedule.end_time?.slice(0,5)||'—'}`:'Sem jornada hoje';
 
     cards.push(`<article class="employee-work-card">
       <div class="employee-work-top">
         <div class="employee-name-line">${isExternal?externalWorkerIcon():''}<div><strong>${esc(emp.full_name)}</strong><small>${isExternal?'Serviço externo autorizado':'Equipe interna'}</small></div></div>
-        <span class="badge ${statusClass}">${status}</span>
+        <div class="employee-status-stack"><span class="badge ${statusClass}">${status}</span>${issueChip}</div>
       </div>
+      <div class="planned-line"><span>Previsto hoje</span><strong>${planned}</strong></div>
       <div class="employee-work-metrics">
         <div><span>Entrada</span><strong>${ins.length?fmtTime(ins[0].occurred_at):'—'}</strong></div>
         <div><span>Saída</span><strong>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</strong></div>
@@ -659,7 +713,7 @@ async function loadManagerHome(){
       ${isExternal?`<div class="employee-location-box">
         <span>Última localização</span>
         <strong>${locText}</strong>
-        <small>${hasLocation?'Atualizada às '+locTime:'Aguardando atualização do aplicativo'}</small>
+        <small>${hasLocation?locationAgeLabel(p.last_location_at):'Aguardando atualização do aplicativo'}</small>
       </div>`:''}
       <div class="employee-work-actions">
         <button class="ghost" onclick="openEmployeeDetail('${emp.id}')">Ver jornada completa</button>
@@ -673,19 +727,92 @@ async function loadManagerHome(){
       <td>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</td>
       <td>${formatMinutes(overtimeMinutes)}</td>
       <td><span class="badge ${statusClass}">${status}</span></td>
-      <td>${isExternal?(hasLocation?`<button class="mini" onclick="openMapsDirections(${Number(p.last_latitude)},${Number(p.last_longitude)})">${locTime}</button>`:'Sem posição'):'—'}</td>
+      <td>${isExternal?(hasLocation?`<button class="mini" onclick="openMapsDirections(${Number(p.last_latitude)},${Number(p.last_longitude)})">${locationAgeLabel(p.last_location_at)}</button>`:'Sem posição'):'—'}</td>
     </tr>`);
   });
 
-  $('managerEmployeeCards').innerHTML=cards.join('');
+  $('managerEmployeeCards').innerHTML=cards.length?cards.join(''):'<div class="empty-mobile-state">Nenhum funcionário neste filtro.</div>';
   $('teamBody').innerHTML=tableRows.join('');
+}
+
+async function loadManagerHome(){
+  const weekday=new Date().getDay();
+  const [{data:emps},{data:events},{data:presence},{data:overtime},{data:schedules}]=await Promise.all([
+    client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes').eq('active',true).order('full_name'),
+    client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
+    client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,last_latitude,last_longitude,last_accuracy_m,last_location_at,updated_at'),
+    client.rpc('get_overtime_snapshot'),
+    client.from('work_schedules').select('employee_id,weekday,start_time,break_start,break_end,end_time,tolerance_minutes').eq('weekday',weekday)
+  ]);
+
+  const employees=emps||[];
+  employeeDirectory=employeeDirectory.length?employeeDirectory:employees;
+  lastManagerEmployees=employees;
+
+  const by=new Map();
+  (events||[]).forEach(ev=>{const arr=by.get(ev.employee_id)||[];arr.push(ev);by.set(ev.employee_id,arr)});
+  const presenceBy=new Map((presence||[]).map(p=>[p.employee_id,p]));
+  lastManagerPresenceBy=presenceBy;
+  const overtimeBy=new Map((overtime||[]).map(o=>[o.employee_id,o]));
+  const scheduleBy=new Map((schedules||[]).map(s=>[s.employee_id,s]));
+  lastManagerSchedules=scheduleBy;
+
+  const now=new Date();
+  let activeShift=0,overtimeNow=0,external=0;
+  const rows=[];
+
+  employees.forEach(emp=>{
+    const arr=by.get(emp.id)||[];
+    const ins=arr.filter(x=>x.event_type==='check_in');
+    const outs=arr.filter(x=>x.event_type==='check_out');
+    const p=presenceBy.get(emp.id);
+    const ot=overtimeBy.get(emp.id);
+    const schedule=scheduleBy.get(emp.id)||null;
+    const onShift=!!p?.is_present;
+    const overtimeMinutes=Number(ot?.total_overtime_minutes||0);
+    const lunchExtra=Number(ot?.lunch_overtime_minutes||0);
+    const isExternal=!!emp.allow_external_after_checkin;
+    const hasLocation=p?.last_latitude!=null&&p?.last_longitude!=null;
+    const isExternalActive=isExternal&&onShift&&!p?.geofence_verified;
+    const status=isExternalActive?'Em serviço externo':onShift?'Em jornada':'Fora da empresa';
+    const statusClass=onShift?'good':'neutral';
+    const locText=hasLocation?`${Number(p.last_latitude).toFixed(5)}, ${Number(p.last_longitude).toFixed(5)}`:(isExternal?'Sem posição recente':'Não aplicável');
+    const locTime=p?.last_location_at?fmtTime(p.last_location_at):'—';
+
+    let isLate=false,openShiftLate=false;
+    if(schedule){
+      const start=timeToday(schedule.start_time);
+      const end=timeToday(schedule.end_time);
+      const tolerance=Number(schedule.tolerance_minutes||0);
+      if(start && now > new Date(start.getTime()+tolerance*60000) && ins.length===0) isLate=true;
+      const extraLimit=Number(emp.overtime_after_minutes??10);
+      if(end && onShift && now > new Date(end.getTime()+extraLimit*60000)) openShiftLate=true;
+    }
+
+    if(onShift) activeShift++;
+    if(overtimeMinutes>0&&onShift) overtimeNow++;
+    if(isExternal) external++;
+
+    rows.push({emp,arr,ins,outs,p,ot,schedule,onShift,overtimeMinutes,lunchExtra,isExternal,hasLocation,isExternalActive,status,statusClass,locText,locTime,isLate,openShiftLate});
+  });
+
+  lastManagerRows=rows;
+  renderAttentionPanel(rows);
+  renderManagerEmployeeRows(rows);
+
   $('employeeTotal').textContent=employees.length;
   $('presentTotal').textContent=activeShift;
   $('overtimeTotal').textContent=overtimeNow;
   $('externalTotal').textContent=external;
+
+  if($('mobileMapSummary')){
+    $('mobileMapSummary').textContent=external
+      ?`${external} funcionário${external===1?'':'s'} com serviço externo habilitado.`
+      :'Nenhum funcionário externo configurado.';
+  }
+
   buildManagerMap(employees,presenceBy);
 }
-
 async function loadManagerRecords(){
   const [{data:emps},{data:events,error}]=await Promise.all([
     client.from('employees').select('id,full_name'),
@@ -758,6 +885,7 @@ function openView(id){
   if(id==='managerHome')loadManagerHome();
   if(id==='employees')loadEmployees();
   if(id==='managerRecords')loadManagerRecords();
+  if(isManager()) updateManagerBottomNav(id);
 }
 
 async function boot(){
@@ -821,6 +949,29 @@ if($('ruleEmployee')) $('ruleEmployee').onchange=loadEmployeeRules;
 if($('saveEmployeeRulesBtn')) $('saveEmployeeRulesBtn').onclick=saveEmployeeRules;
 if($('closeThanksBtn')) $('closeThanksBtn').onclick=()=>$('endShiftThanks').classList.add('hidden');
 if($('refreshManagerDashboard')) $('refreshManagerDashboard').onclick=loadManagerHome;
+if($('mobileRefreshBtn')) $('mobileRefreshBtn').onclick=loadManagerHome;
+if($('openMobileMapBtn')) $('openMobileMapBtn').onclick=openMobileMap;
+if($('closeMobileMapBtn')) $('closeMobileMapBtn').onclick=closeMobileMap;
+document.querySelectorAll('[data-mobile-manager-view]').forEach(btn=>{
+  btn.onclick=()=>openView(btn.dataset.mobileManagerView);
+});
+document.querySelectorAll('[data-mobile-manager-action="map"]').forEach(btn=>{
+  btn.onclick=openMobileMap;
+});
+if($('managerTeamFilter')) $('managerTeamFilter').onchange=()=>{
+  activeAttentionFilter=null;
+  document.querySelectorAll('.attention-card').forEach(b=>b.classList.remove('selected'));
+  applyManagerTeamFilter();
+};
+document.querySelectorAll('.attention-card').forEach(btn=>{
+  btn.onclick=()=>{
+    const value=btn.dataset.attention;
+    activeAttentionFilter=activeAttentionFilter===value?null:value;
+    document.querySelectorAll('.attention-card').forEach(b=>b.classList.toggle('selected',activeAttentionFilter===b.dataset.attention));
+    applyManagerTeamFilter();
+    $('managerEmployeeCards')?.scrollIntoView({behavior:'smooth',block:'start'});
+  };
+});
 document.querySelectorAll('[data-close-detail]').forEach(el=>el.onclick=closeEmployeeDetail);
 setInterval(()=>{ if(me&&!isManager()) checkEndShiftThanks(); },60000);
 setInterval(()=>{ if(me&&isManager()&&document.visibilityState==='visible') loadManagerHome(); },60000);

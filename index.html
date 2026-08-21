@@ -111,7 +111,41 @@
         </article>
       </section>
 
-      <section id="managerHome" class="view">
+      <section id="managerHome" class="view manager-mobile-view">
+        <div class="mobile-admin-hero">
+          <div>
+            <span class="eyebrow">PAINEL DO GESTOR</span>
+            <h2>Bom dia</h2>
+            <p>Acompanhe a equipe de hoje.</p>
+          </div>
+          <button id="mobileRefreshBtn" class="mobile-icon-btn" aria-label="Atualizar">↻</button>
+        </div>
+
+        <section class="attention-panel">
+          <div class="mobile-section-title attention-title">
+            <div><span class="eyebrow">ATENÇÃO AGORA</span><h3>O que precisa de você</h3></div>
+          </div>
+          <div class="attention-grid">
+            <button class="attention-card" data-attention="late">
+              <span class="attention-dot"></span>
+              <div><strong id="lateTotal">0</strong><small>Atrasados</small></div>
+            </button>
+            <button class="attention-card" data-attention="overtime">
+              <span class="attention-dot"></span>
+              <div><strong id="attentionOvertimeTotal">0</strong><small>Hora extra</small></div>
+            </button>
+            <button class="attention-card" data-attention="external">
+              <span class="attention-dot"></span>
+              <div><strong id="attentionExternalTotal">0</strong><small>Externos</small></div>
+            </button>
+            <button class="attention-card" data-attention="open_shift">
+              <span class="attention-dot"></span>
+              <div><strong id="openShiftTotal">0</strong><small>Sem saída</small></div>
+            </button>
+          </div>
+          <div id="attentionList" class="attention-list"></div>
+        </section>
+
         <div class="manager-mobile-head">
           <div>
             <span class="eyebrow">ACOMPANHAMENTO</span>
@@ -128,7 +162,20 @@
           <article class="card"><span>Serviço externo</span><strong id="externalTotal">0</strong><small>Equipe liberada</small></article>
         </div>
 
-        <article class="card map-card">
+        <div class="mobile-section-title">
+          <div><span class="eyebrow">AGORA</span><h3>Equipe em andamento</h3></div>
+        </div>
+
+        <article class="mobile-map-preview" id="mobileMapPreview">
+          <div>
+            <span class="eyebrow">LOCALIZAÇÃO</span>
+            <h3>Ver equipe no mapa</h3>
+            <p id="mobileMapSummary">Funcionários externos e últimas posições.</p>
+          </div>
+          <button id="openMobileMapBtn" class="mobile-map-btn">Abrir mapa</button>
+        </article>
+
+        <article class="card map-card desktop-map-card">
           <div class="card-head">
             <div><span class="eyebrow">MAPA DA EQUIPE EXTERNA</span><h3>Última localização durante a jornada</h3></div>
             <span class="pill" id="mapUpdatedAt">—</span>
@@ -140,7 +187,13 @@
         <article class="card table-card">
           <div class="card-head">
             <div><span class="eyebrow">EQUIPE</span><h3>Dados do trabalho de hoje</h3></div>
-            <span class="pill">PC + celular</span>
+            <select id="managerTeamFilter" class="manager-team-filter">
+              <option value="all">Todos</option>
+              <option value="attention">Com atenção</option>
+              <option value="active">Em jornada</option>
+              <option value="external">Serviço externo</option>
+              <option value="overtime">Hora extra</option>
+            </select>
           </div>
           <div id="managerEmployeeCards" class="manager-employee-cards"></div>
           <div class="table-wrap manager-desktop-table">
@@ -151,9 +204,9 @@
           </div>
         </article>
 
-        <article class="card table-card">
+        <article class="card table-card admin-settings-card">
           <div class="card-head">
-            <div><span class="eyebrow">LOCALIZAÇÃO DA UNIDADE</span><h3>Geofence do ponto</h3></div>
+            <div><span class="eyebrow">CONFIGURAÇÕES</span><h3>Localização da unidade</h3></div>
             <span class="pill" id="branchLocationStatus">Não configurado</span>
           </div>
           <p class="privacy">Use esta configuração apenas quando estiver fisicamente na unidade.</p>
@@ -168,6 +221,19 @@
           <p class="privacy" id="branchLocationMsg">A localização ainda não foi definida.</p>
         </article>
       </section>
+
+
+      <div id="mobileMapSheet" class="mobile-map-sheet hidden">
+        <div class="mobile-map-sheet-head">
+          <div>
+            <span class="eyebrow">LOCALIZAÇÃO DA EQUIPE</span>
+            <h3>Mapa em tempo real</h3>
+          </div>
+          <button id="closeMobileMapBtn" class="mobile-icon-btn" aria-label="Fechar">×</button>
+        </div>
+        <div id="mobileManagerMap" class="mobile-full-map"></div>
+        <div id="mobileMapPeople" class="mobile-map-people"></div>
+      </div>
 
       <div id="employeeDetailModal" class="detail-modal hidden">
         <div class="detail-backdrop" data-close-detail></div>
@@ -346,5 +412,21 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="app.js"></script>
+
+  <nav id="managerBottomNav" class="manager-bottom-nav hidden" aria-label="Navegação do gestor">
+    <button data-mobile-manager-view="managerHome" class="active">
+      <span class="nav-icon">⌂</span><span>Início</span>
+    </button>
+    <button data-mobile-manager-view="employees">
+      <span class="nav-icon">◉</span><span>Equipe</span>
+    </button>
+    <button data-mobile-manager-action="map">
+      <span class="nav-icon">⌖</span><span>Mapa</span>
+    </button>
+    <button data-mobile-manager-view="managerRecords">
+      <span class="nav-icon">≡</span><span>Registros</span>
+    </button>
+  </nav>
+
 </body>
 </html>
