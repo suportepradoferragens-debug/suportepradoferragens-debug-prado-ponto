@@ -12,7 +12,7 @@ function ensureSupabaseClient(){
   client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
   return client;
 }
-let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,mobileManagerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0,lastExternalSentCoords=null,lastExternalWasMoving=false,lastManagerPresenceBy=new Map(),lastManagerEmployees=[],lastManagerRows=[],lastManagerSchedules=new Map(),activeAttentionFilter=null,activeDetailEmployeeId=null,detailLiveReloadTimer=null,lastExternalGpsReceivedAt=null,lastExternalGpsSentAt=null,lastExternalGpsError=null,lastExternalGpsCoords=null;
+let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,mobileManagerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0,lastExternalSentCoords=null,lastExternalWasMoving=false,lastManagerPresenceBy=new Map(),lastManagerEmployees=[],lastManagerRows=[],lastManagerSchedules=new Map(),activeAttentionFilter=null,activeDetailEmployeeId=null,detailLiveReloadTimer=null,lastExternalGpsReceivedAt=null,lastExternalGpsSentAt=null,lastExternalGpsError=null,lastExternalGpsCoords=null,employeeSpeedAlertActive=false,lastEmployeeSpeedAlertAt=0;
 
 const fmtTime=iso=>new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
@@ -203,6 +203,60 @@ async function loadProfile(){
 
 
 
+
+function playSpeedWarningTone(){
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    if(!Ctx) return;
+    const ctx=new Ctx();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.type='sine';
+    osc.frequency.setValueAtTime(980,ctx.currentTime);
+    gain.gain.setValueAtTime(.0001,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.16,ctx.currentTime+.02);
+    gain.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.45);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime+.5);
+  }catch{}
+}
+
+function handleEmployeeSpeedAlert(speedValue){
+  const speed=Number(speedValue);
+  if(!Number.isFinite(speed)) return;
+
+  if(speed<=55){
+    employeeSpeedAlertActive=false;
+    $('employeeSpeedAlert')?.classList.add('hidden');
+    return;
+  }
+
+  if(speed<=60) return;
+
+  const now=Date.now();
+  if(employeeSpeedAlertActive && now-lastEmployeeSpeedAlertAt<120000) return;
+
+  employeeSpeedAlertActive=true;
+  lastEmployeeSpeedAlertAt=now;
+
+  if($('employeeSpeedAlert')){
+    $('employeeSpeedAlert').classList.remove('hidden');
+    $('employeeSpeedAlertValue').textContent=`${Math.round(speed)} km/h`;
+  }
+
+  playSpeedWarningTone();
+
+  if('Notification' in window && Notification.permission==='granted'){
+    try{
+      new Notification('Atenção à velocidade',{
+        body:`Velocidade estimada em ${Math.round(speed)} km/h. Reduza com segurança.`,
+        icon:'/icon-180.png',
+        tag:'employee-speed-limit'
+      });
+    }catch{}
+  }
+}
+
 function renderExternalGpsDiagnostics(){
   if(!$('gpsDiagStatus')) return;
   const active=externalLocationWatchId!==null;
@@ -300,7 +354,7 @@ async function sendExternalLocationPosition(pos,force=false){
   if(!force && now-lastExternalLocationSentAt<minIntervalMs) return;
 
   lastExternalLocationSentAt=now;
-  const {error}=await client.rpc('register_external_location',{
+  const {data,error}=await client.rpc('register_external_location',{
     p_latitude:currentCoords.latitude,
     p_longitude:currentCoords.longitude,
     p_accuracy_m:currentCoords.accuracy
@@ -315,6 +369,9 @@ async function sendExternalLocationPosition(pos,force=false){
     }
     throw error;
   }
+
+  const savedRow=Array.isArray(data)?data[0]:data;
+  if(savedRow?.speed_kmh!=null) handleEmployeeSpeedAlert(savedRow.speed_kmh);
 
   lastExternalSentCoords=currentCoords;
   lastExternalWasMoving=
@@ -1710,6 +1767,32 @@ function showManagerPunchToast(row){
 
 function handleManagerPunchNotification(row){
   if(!isManager()||!row) return;
+
+  const speeding=row.event_type==='speeding' || row.alert_kind==='speed_limit';
+  if(speeding){
+    const speed=Math.round(Number(row.speed_kmh||0));
+    const toast=$('managerPunchToast');
+    if(toast){
+      $('managerPunchToastTitle').textContent='Alerta de velocidade';
+      $('managerPunchToastText').textContent=`${row.employee_name} • ${speed} km/h`;
+      toast.classList.remove('hidden');
+      clearTimeout(showManagerPunchToast.timer);
+      showManagerPunchToast.timer=setTimeout(()=>toast.classList.add('hidden'),8000);
+    }
+    playManagerPunchSound();
+
+    if('Notification' in window && Notification.permission==='granted'){
+      try{
+        new Notification(`Velocidade acima de 60 km/h • ${row.employee_name}`,{
+          body:`Velocidade estimada: ${speed} km/h.`,
+          icon:'/icon-180.png',
+          tag:`speed-${row.id||Date.now()}`
+        });
+      }catch{}
+    }
+    return;
+  }
+
   const type=row.event_type==='check_in'?'Entrada':'Saída';
   showManagerPunchToast(row);
   playManagerPunchSound();
