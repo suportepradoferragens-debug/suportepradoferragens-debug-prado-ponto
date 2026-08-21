@@ -258,28 +258,44 @@ async function clearSchedule(){
 }
 
 async function loadManagerHome(){
-  const [{data:emps},{data:events}]=await Promise.all([
+  const [{data:emps},{data:events},{data:presence}]=await Promise.all([
     client.from('employees').select('id,full_name,active').eq('active',true).order('full_name'),
-    client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true})
+    client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
+    client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,updated_at')
   ]);
   const by=new Map();(events||[]).forEach(ev=>{const arr=by.get(ev.employee_id)||[];arr.push(ev);by.set(ev.employee_id,arr)});
+  const presenceBy=new Map((presence||[]).map(p=>[p.employee_id,p]));
   let present=0;
   $('teamBody').innerHTML=(emps||[]).map(emp=>{
     const arr=by.get(emp.id)||[],ins=arr.filter(x=>x.event_type==='check_in'),outs=arr.filter(x=>x.event_type==='check_out');
-    const inside=arr.length&&arr[arr.length-1].event_type==='check_in';if(inside)present++;
-    return `<tr><td>${emp.full_name}</td><td>${ins.length?fmtTime(ins[0].occurred_at):'—'}</td><td>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</td><td><span class="badge ${inside?'good':'neutral'}">${inside?'Presente':arr.length?'Saiu':'Sem registro'}</span></td></tr>`;
+    const p=presenceBy.get(emp.id);
+    const inside=p ? !!p.is_present : !!(arr.length&&arr[arr.length-1].event_type==='check_in');
+    if(inside)present++;
+    let evidence='—';
+    if(p?.wifi_verified&&p?.geofence_verified)evidence='Wi‑Fi + localização';
+    else if(p?.wifi_verified)evidence='Wi‑Fi confirmado';
+    else if(p?.geofence_verified)evidence='Localização confirmada';
+    const lastSeen=p?.last_seen_at?fmtTime(p.last_seen_at):(arr.length?fmtTime(arr[arr.length-1].occurred_at):'—');
+    return `<tr>
+      <td>${emp.full_name}</td>
+      <td>${ins.length?fmtTime(ins[0].occurred_at):'—'}</td>
+      <td>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</td>
+      <td><span class="badge ${inside?'good':'neutral'}">${inside?'Na empresa':'Fora da empresa'}</span><br><small>${evidence} • ${lastSeen}</small></td>
+    </tr>`;
   }).join('');
-  $('employeeTotal').textContent=(emps||[]).length;$('presentTotal').textContent=present;$('todayTotal').textContent=(events||[]).length;
+  $('employeeTotal').textContent=(emps||[]).length;
+  $('presentTotal').textContent=present;
+  $('todayTotal').textContent=(events||[]).length;
 }
 
 async function loadManagerRecords(){
   const [{data:emps},{data:events,error}]=await Promise.all([
     client.from('employees').select('id,full_name'),
-    client.from('attendance_events').select('employee_id,event_type,occurred_at,geofence_verified').order('occurred_at',{ascending:false}).limit(200)
+    client.from('attendance_events').select('employee_id,event_type,occurred_at,geofence_verified,wifi_verified,automatic,receipt_code').order('occurred_at',{ascending:false}).limit(200)
   ]);
   if(error)return;
   const names=new Map((emps||[]).map(e=>[e.id,e.full_name]));
-  $('recordsBody').innerHTML=(events||[]).map(e=>`<tr><td>${names.get(e.employee_id)||'Funcionário'}</td><td>${fmtDate(e.occurred_at)}</td><td>${fmtTime(e.occurred_at)}</td><td>${e.event_type==='check_in'?'Entrada':'Saída'}</td><td>${e.geofence_verified?'Confirmado':'Não'}</td></tr>`).join('');
+  $('recordsBody').innerHTML=(events||[]).map(e=>`<tr><td>${names.get(e.employee_id)||'Funcionário'}</td><td>${fmtDate(e.occurred_at)}</td><td>${fmtTime(e.occurred_at)}</td><td>${e.event_type==='check_in'?'Entrada':'Saída'}${e.automatic?'<br><small>Automático</small>':''}${e.receipt_code?`<br><small>${e.receipt_code}</small>`:''}</td><td>${e.wifi_verified?'Wi‑Fi':e.geofence_verified?'Localização':'Não'}</td></tr>`).join('');
 }
 
 function openView(id){
@@ -359,6 +375,11 @@ $('saveScheduleBtn').onclick=saveSchedule;
 $('clearScheduleBtn').onclick=clearSchedule;
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
 client.auth.onAuthStateChange((e)=>{if(e==='SIGNED_OUT')showAuth()});
+client.channel('manager-presence-live')
+  .on('postgres_changes',{event:'*',schema:'public',table:'employee_presence'},()=>{
+    if(me&&isManager()&&$('managerHome')?.classList.contains('active-view')) loadManagerHome();
+  })
+  .subscribe();
 const inviteEmail=new URLSearchParams(location.search).get('email');
 if(inviteEmail){
   $('inviteIdentity').classList.remove('hidden');
