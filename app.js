@@ -835,6 +835,76 @@ async function loadManagerHome(){
     }
   }
 }
+
+function updateManagerBottomNav(viewId){
+  document.querySelectorAll('#managerBottomNav [data-mobile-manager-view]').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.mobileManagerView===viewId);
+  });
+  document.querySelectorAll('#managerBottomNav [data-mobile-manager-action]').forEach(btn=>{
+    btn.classList.remove('active');
+  });
+}
+
+function buildMobileManagerMap(){
+  if(typeof L==='undefined' || !$('mobileManagerMap')) return;
+  if(mobileManagerMap){ mobileManagerMap.remove(); mobileManagerMap=null; }
+
+  const center=(branch?.latitude!=null&&branch?.longitude!=null)
+    ? [Number(branch.latitude),Number(branch.longitude)]
+    : [-23.55,-46.63];
+
+  mobileManagerMap=L.map('mobileManagerMap',{zoomControl:true}).setView(center,14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:19,attribution:'&copy; OpenStreetMap'
+  }).addTo(mobileManagerMap);
+
+  const bounds=[];
+  if(branch?.latitude!=null&&branch?.longitude!=null){
+    L.circle([Number(branch.latitude),Number(branch.longitude)],{
+      radius:Number(branch.geofence_radius_m||80)
+    }).addTo(mobileManagerMap).bindPopup('Unidade');
+    bounds.push([Number(branch.latitude),Number(branch.longitude)]);
+  }
+
+  const people=[];
+  lastManagerEmployees.filter(emp=>emp.allow_external_after_checkin).forEach(emp=>{
+    const p=lastManagerPresenceBy.get(emp.id);
+    if(p?.last_latitude==null || p?.last_longitude==null) return;
+    const lat=Number(p.last_latitude), lng=Number(p.last_longitude);
+    bounds.push([lat,lng]);
+    L.marker([lat,lng]).addTo(mobileManagerMap)
+      .bindPopup(`<strong>${esc(emp.full_name)}</strong><br>${p.is_present?'Jornada ativa':'Jornada encerrada'}<br>Última posição: ${p.last_location_at?fmtTime(p.last_location_at):'—'}`);
+
+    people.push(`<button class="mobile-map-person" onclick="openMapsDirections(${lat},${lng})">
+      <span class="attention-avatar">${esc(initials(emp.full_name))}</span>
+      <span><strong>${esc(emp.full_name)}</strong><small>${p.last_location_at?locationAgeLabel(p.last_location_at):'Sem atualização'}</small></span>
+      <b>›</b>
+    </button>`);
+  });
+
+  if($('mobileMapPeople')){
+    $('mobileMapPeople').innerHTML=people.length
+      ? people.join('')
+      : '<div class="empty-mobile-state">Nenhuma localização externa disponível agora.</div>';
+  }
+
+  if(bounds.length>1) mobileManagerMap.fitBounds(bounds,{padding:[24,24],maxZoom:16});
+  setTimeout(()=>mobileManagerMap?.invalidateSize(),120);
+}
+
+function openMobileMap(){
+  if(!$('mobileMapSheet')) return;
+  $('mobileMapSheet').classList.remove('hidden');
+  document.body.classList.add('mobile-sheet-open');
+  buildMobileManagerMap();
+}
+
+function closeMobileMap(){
+  $('mobileMapSheet')?.classList.add('hidden');
+  document.body.classList.remove('mobile-sheet-open');
+  if(mobileManagerMap){ mobileManagerMap.remove(); mobileManagerMap=null; }
+}
+
 async function loadManagerRecords(){
   const [{data:emps},{data:events,error}]=await Promise.all([
     client.from('employees').select('id,full_name'),
@@ -934,9 +1004,14 @@ async function boot(){
     showApp();
     if(!isManager()){await loadToday();await loadMySchedule()}
   }catch(e){
-    await client.auth.signOut();
+    console.error('boot_profile_error',e);
     showAuth();
-    setAuthMsg('Seu Google foi autenticado, mas este e-mail ainda não está cadastrado como funcionário. Peça um convite ao gestor.',true);
+    const msg=String(e?.message||'Erro ao carregar o perfil.');
+    if(msg.includes('não está vinculado') || msg.includes('não cadastrado')){
+      setAuthMsg('Seu Google foi autenticado, mas este e-mail ainda não está cadastrado como funcionário. Peça um convite ao gestor.',true);
+    }else{
+      setAuthMsg('Login confirmado, mas houve um erro ao abrir o painel: '+msg,true);
+    }
   }
 }
 
