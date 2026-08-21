@@ -196,7 +196,7 @@ async function loadProfile(){
     setTimeout(()=>checkWebPresence(false),500);
     setTimeout(()=>checkEndShiftThanks(),1200);
     setTimeout(()=>requestNotificationPermission(),2500);
-    if(me.allow_external_after_checkin){ setTimeout(()=>startExternalLocationTracking(),1800); setTimeout(()=>renderExternalGpsDiagnostics(),2200); }
+    if(me.allow_external_after_checkin){ setTimeout(()=>startExternalLocationTracking(),1800); setTimeout(()=>renderExternalGpsDiagnostics(),2200); } else { $('externalGpsDiagnostics')?.classList.add('hidden'); }
   }
 }
 
@@ -1056,8 +1056,13 @@ async function openEmployeeDetail(employeeId){
     <div><span>Tempo em jornada</span><strong>${formatMinutes(workedMinutes)}</strong></div>
     <div><span>Hora extra</span><strong>${formatMinutes(ot?.total_overtime_minutes||0)}</strong></div>
     <div><span>Almoço extra</span><strong>${formatMinutes(ot?.lunch_overtime_minutes||0)}</strong></div>
+    <div><span>Status GPS</span><strong>${(()=>{
+      const last=locs.length?locs[locs.length-1].recorded_at:null;
+      return gpsLiveStatus(last,!!lastManagerPresenceBy.get(employeeId)?.is_present).label;
+    })()}</strong></div>
     <div><span>Última posição</span><strong>${locs.length?locationAgeLabel(locs[locs.length-1].recorded_at):'Sem posição'}</strong></div>
     <div><span>Velocidade atual</span><strong>${locs.length?speedLabel(locs[locs.length-1].speed_kmh):'—'}</strong></div>
+    <div><span>Precisão GPS</span><strong>${locs.length&&locs[locs.length-1].accuracy_m!=null?Math.round(Number(locs[locs.length-1].accuracy_m))+' m':'—'}</strong></div>
     <div><span>Registros hoje</span><strong>${arr.length}</strong></div>`;
 
   $('detailLocationTimeline').innerHTML=locs.length?locs.slice().reverse().map(l=>`
@@ -1124,6 +1129,16 @@ function speedLabel(value){
   const n=Math.max(0,Number(value));
   if(n<2) return 'Parado';
   return `${Math.round(n)} km/h`;
+}
+
+
+function gpsLiveStatus(ts,isPresent){
+  if(!isPresent) return {label:'Jornada encerrada',cls:'neutral'};
+  if(!ts) return {label:'Sem sinal GPS',cls:'bad'};
+  const ageMs=Date.now()-new Date(ts).getTime();
+  if(ageMs<=45000) return {label:'GPS ao vivo',cls:'good'};
+  if(ageMs<=180000) return {label:'GPS atrasado',cls:'warn'};
+  return {label:'GPS sem atualizar',cls:'bad'};
 }
 
 function locationAgeLabel(ts){
@@ -1213,11 +1228,17 @@ function renderManagerEmployeeRows(rows){
         </div>
         <div class="employee-overtime30-days">Carregando histórico...</div>
       </div>
-      ${isExternal?`<div class="employee-location-box">
-        <span>Última localização</span>
-        <strong>${locText}</strong>
-        <small>${hasLocation?`${speedLabel(p.last_speed_kmh)} • ${locationAgeLabel(p.last_location_at)}`:'Aguardando atualização do aplicativo'}</small>
-      </div>`:''}
+      ${isExternal?(()=>{
+        const live=gpsLiveStatus(p?.last_location_at,onShift);
+        return `<div class="employee-location-box manager-live-gps-box">
+          <div class="manager-live-gps-head">
+            <span>GPS do funcionário</span>
+            <b class="manager-live-gps-pill ${live.cls}">${live.label}</b>
+          </div>
+          <strong>${hasLocation?locText:'Sem posição disponível'}</strong>
+          <small>${hasLocation?`${speedLabel(p.last_speed_kmh)} • ${locationAgeLabel(p.last_location_at)} • precisão ${p.last_accuracy_m!=null?Math.round(Number(p.last_accuracy_m))+' m':'—'}`:'Aguardando sinal do celular'}</small>
+        </div>`;
+      })():''}
       <div class="employee-work-actions">
         <button class="ghost" onclick="openEmployeeDetail('${emp.id}')">Ver jornada completa</button>
         ${hasLocation?`<button class="primary" onclick="openEmployeeDetail('${emp.id}')">Ver percurso</button>`:''}
@@ -1413,7 +1434,7 @@ async function loadManagerHome(){
 
   if($('mobileMapSummary')){
     $('mobileMapSummary').textContent=external
-      ?`${external} funcionário${external===1?'':'s'} externo${external===1?'':'s'} • percurso e velocidade no app enquanto o GPS estiver ativo.`
+      ?`${external} funcionário${external===1?'':'s'} externo${external===1?'':'s'} • GPS ao vivo, velocidade e percurso no painel do gestor.`
       :'Nenhum funcionário externo configurado.';
   }
 
@@ -1492,11 +1513,12 @@ async function buildMobileManagerMap(){
     L.marker([lat,lng]).addTo(mobileManagerMap)
       .bindPopup(`<strong>${esc(emp.full_name)}</strong><br>${p.is_present?'Jornada ativa':'Jornada encerrada'}<br><strong>${speedLabel(p.last_speed_kmh)}</strong><br>Atualizado ${p.last_location_at?locationAgeLabel(p.last_location_at):'—'}`);
 
+    const live=gpsLiveStatus(p.last_location_at,p.is_present);
     people.push(`<button class="mobile-map-person" onclick="openEmployeeDetail('${emp.id}')">
       ${avatarHtml(emp,'attention-avatar-photo')}
       <span>
         <strong>${esc(emp.full_name)}</strong>
-        <small>${speedLabel(p.last_speed_kmh)} • ${p.last_location_at?locationAgeLabel(p.last_location_at):'sem atualização'}</small>
+        <small><b class="manager-live-gps-inline ${live.cls}">${live.label}</b> • ${speedLabel(p.last_speed_kmh)} • ${p.last_location_at?locationAgeLabel(p.last_location_at):'sem atualização'}</small>
       </span>
       <b>›</b>
     </button>`);
@@ -2122,7 +2144,7 @@ document.querySelectorAll('.attention-card').forEach(btn=>{
 });
 document.querySelectorAll('[data-close-detail]').forEach(el=>el.onclick=closeEmployeeDetail);
 setInterval(()=>{ if(me&&!isManager()) checkEndShiftThanks(); },60000);
-setInterval(()=>{ if(me&&isManager()&&document.visibilityState==='visible') loadManagerHome(); },60000);
+setInterval(()=>{ if(me&&isManager()&&document.visibilityState==='visible') loadManagerHome(); },15000);
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
 try{ ensureSupabaseClient(); }catch(e){
   setAuthMsg(e.message||'Não foi possível carregar o login.',true);
