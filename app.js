@@ -1,7 +1,16 @@
 const SUPABASE_URL='https://coeqnnanqzlkkgkejbef.supabase.co';
 const SUPABASE_KEY='sb_publishable_1qD2SXfcWcWJ7AcvrlmErQ_VI6GZg8c';
-const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
+let client=null;
+
+function ensureSupabaseClient(){
+  if(client) return client;
+  if(!window.supabase?.createClient){
+    throw new Error('A biblioteca de login não carregou. Verifique a internet e abra o Prado Ponto novamente.');
+  }
+  client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  return client;
+}
 let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,mobileManagerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0,lastManagerPresenceBy=new Map(),lastManagerEmployees=[],lastManagerRows=[],lastManagerSchedules=new Map(),activeAttentionFilter=null;
 
 const fmtTime=iso=>new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
@@ -558,6 +567,7 @@ async function openEmployeeDetail(employeeId){
   $('detailEmployeeSummary').innerHTML='<span class="muted">Carregando dados...</span>';
   $('detailLocationTimeline').innerHTML='<span class="muted">Carregando localizações...</span>';
 
+  try{
   const [{data:events},{data:locations},{data:overtime},{data:schedule}]=await Promise.all([
     client.from('attendance_events').select('event_type,occurred_at,automatic,receipt_code').eq('employee_id',employeeId).gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
     client.from('employee_location_updates').select('latitude,longitude,accuracy_m,recorded_at').eq('employee_id',employeeId).gte('recorded_at',startToday()).lte('recorded_at',endToday()).order('recorded_at',{ascending:true}).limit(300),
@@ -566,6 +576,7 @@ async function openEmployeeDetail(employeeId){
   ]);
 
   const arr=events||[];
+  const locs=locations||[];
   const ot=(overtime||[]).find(x=>x.employee_id===employeeId);
   const ins=arr.filter(x=>x.event_type==='check_in');
   const outs=arr.filter(x=>x.event_type==='check_out');
@@ -588,7 +599,6 @@ async function openEmployeeDetail(employeeId){
     <div><span>Última posição</span><strong>${locs.length?locationAgeLabel(locs[locs.length-1].recorded_at):'Sem posição'}</strong></div>
     <div><span>Registros hoje</span><strong>${arr.length}</strong></div>`;
 
-  const locs=locations||[];
   $('detailLocationTimeline').innerHTML=locs.length?locs.slice().reverse().map(l=>`
     <button class="location-row" onclick="openMapsDirections(${Number(l.latitude)},${Number(l.longitude)})">
       <span><strong>${fmtTime(l.recorded_at)}</strong><small>${Number(l.latitude).toFixed(5)}, ${Number(l.longitude).toFixed(5)}</small></span>
@@ -608,6 +618,11 @@ async function openEmployeeDetail(employeeId){
       if(points.length>1) detailMap.fitBounds(points,{padding:[25,25],maxZoom:17});
     }
     setTimeout(()=>detailMap?.invalidateSize(),100);
+  }
+  }catch(err){
+    console.error('employee_detail_error',err);
+    $('detailEmployeeSummary').innerHTML='<div><span>Status</span><strong>Erro ao carregar detalhes</strong></div>';
+    $('detailLocationTimeline').innerHTML='<span class="muted">Não foi possível carregar as localizações agora.</span>';
   }
 }
 
@@ -737,7 +752,8 @@ function renderManagerEmployeeRows(rows){
 
 async function loadManagerHome(){
   const weekday=new Date().getDay();
-  const [{data:emps},{data:events},{data:presence},{data:overtime},{data:schedules}]=await Promise.all([
+  try{
+  const [{data:emps,error:empsError},{data:events,error:eventsError},{data:presence,error:presenceError},{data:overtime,error:overtimeError},{data:schedules,error:schedulesError}]=await Promise.all([
     client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes').eq('active',true).order('full_name'),
     client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
     client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,last_latitude,last_longitude,last_accuracy_m,last_location_at,updated_at'),
@@ -812,6 +828,12 @@ async function loadManagerHome(){
   }
 
   buildManagerMap(employees,presenceBy);
+  }catch(err){
+    console.error('manager_dashboard_error',err);
+    if($('attentionList')){
+      $('attentionList').innerHTML='<div class="all-good-card"><strong>Não foi possível atualizar o painel</strong><small>Tente tocar em Atualizar. Os registros de ponto continuam preservados.</small></div>';
+    }
+  }
 }
 async function loadManagerRecords(){
   const [{data:emps},{data:events,error}]=await Promise.all([
@@ -889,6 +911,12 @@ function openView(id){
 }
 
 async function boot(){
+  try{ ensureSupabaseClient(); }
+  catch(e){
+    showAuth();
+    setAuthMsg(e.message||'Não foi possível iniciar o login.',true);
+    return;
+  }
   const {data:{session}}=await client.auth.getSession();
   if(!session){showAuth();return}
   const invited=(sessionStorage.getItem('pradoInviteEmail')||new URLSearchParams(location.search).get('email')||'').toLowerCase();
@@ -920,6 +948,7 @@ $('googleLoginBtn').addEventListener('click', async (ev)=>{
   const inviteEmail=new URLSearchParams(location.search).get('email');
   if(inviteEmail) sessionStorage.setItem('pradoInviteEmail',inviteEmail.toLowerCase());
   try{
+    ensureSupabaseClient();
     const {data,error}=await client.auth.signInWithOAuth({
       provider:'google',
       options:{
@@ -976,12 +1005,17 @@ document.querySelectorAll('[data-close-detail]').forEach(el=>el.onclick=closeEmp
 setInterval(()=>{ if(me&&!isManager()) checkEndShiftThanks(); },60000);
 setInterval(()=>{ if(me&&isManager()&&document.visibilityState==='visible') loadManagerHome(); },60000);
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
-client.auth.onAuthStateChange((e)=>{if(e==='SIGNED_OUT')showAuth()});
-client.channel('manager-presence-live')
-  .on('postgres_changes',{event:'*',schema:'public',table:'employee_presence'},()=>{
-    if(me&&isManager()&&$('managerHome')?.classList.contains('active-view')) loadManagerHome();
-  })
-  .subscribe();
+try{ ensureSupabaseClient(); }catch(e){
+  setAuthMsg(e.message||'Não foi possível carregar o login.',true);
+}
+client?.auth.onAuthStateChange((e)=>{if(e==='SIGNED_OUT')showAuth()});
+if(client){
+  client.channel('manager-presence-live')
+    .on('postgres_changes',{event:'*',schema:'public',table:'employee_presence'},()=>{
+      if(me&&isManager()&&$('managerHome')?.classList.contains('active-view')) loadManagerHome();
+    })
+    .subscribe();
+}
 const inviteEmail=new URLSearchParams(location.search).get('email');
 if(inviteEmail){
   $('inviteIdentity').classList.remove('hidden');

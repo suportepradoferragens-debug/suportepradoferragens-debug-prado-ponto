@@ -410,10 +410,7 @@
     </main>
   </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="app.js"></script>
-
-  <nav id="managerBottomNav" class="manager-bottom-nav hidden" aria-label="Navegação do gestor">
+<nav id="managerBottomNav" class="manager-bottom-nav hidden" aria-label="Navegação do gestor">
     <button data-mobile-manager-view="managerHome" class="active">
       <span class="nav-icon">⌂</span><span>Início</span>
     </button>
@@ -428,5 +425,11 @@
     </button>
   </nav>
 
-</body>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+if(!window.supabase){
+  document.write('<script src="https://unpkg.com/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"><\/script>');
+}
+</script>
+<script src="app.js"></script></body>
 </html>

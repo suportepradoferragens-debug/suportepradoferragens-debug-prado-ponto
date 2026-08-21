@@ -1,4 +1,4 @@
-const CACHE='prado-ponto-v5';
+const CACHE='prado-ponto-v7';
 const SHELL=['/','/index.html','/styles.css','/app.js','/manifest.json','/icon-180.png','/icon-512.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL))));
 self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
