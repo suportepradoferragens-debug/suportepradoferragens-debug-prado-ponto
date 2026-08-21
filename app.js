@@ -1051,8 +1051,15 @@ function renderManagerEmployeeRows(rows){
       <div class="employee-work-metrics">
         <div><span>Entrada</span><strong>${ins.length?fmtTime(ins[0].occurred_at):'—'}</strong></div>
         <div><span>Saída</span><strong>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</strong></div>
-        <div><span>Hora extra</span><strong class="${overtimeMinutes>0?'overtime-value':''}">${formatMinutes(overtimeMinutes)}</strong></div>
+        <div><span>Hora extra hoje</span><strong class="${overtimeMinutes>0?'overtime-value':''}">${formatMinutes(overtimeMinutes)}</strong></div>
         <div><span>Almoço extra</span><strong>${formatMinutes(lunchExtra)}</strong></div>
+      </div>
+      <div class="employee-overtime30" data-employee-overtime30="${emp.id}">
+        <div class="employee-overtime30-head">
+          <div><span>Horas extras • 30 dias</span><strong>Calculando...</strong></div>
+          <button class="mini" onclick="openEmployeeDetail('${emp.id}')">Ver dias</button>
+        </div>
+        <div class="employee-overtime30-days">Carregando histórico...</div>
       </div>
       ${isExternal?`<div class="employee-location-box">
         <span>Última localização</span>
@@ -1070,6 +1077,7 @@ function renderManagerEmployeeRows(rows){
       <td>${ins.length?fmtTime(ins[0].occurred_at):'—'}</td>
       <td>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</td>
       <td>${formatMinutes(overtimeMinutes)}</td>
+      <td><strong data-employee-overtime30-table="${emp.id}">—</strong></td>
       <td><span class="badge ${statusClass}">${status}</span></td>
       <td>${isExternal?(hasLocation?`<button class="mini" onclick="openMapsDirections(${Number(p.last_latitude)},${Number(p.last_longitude)})">${locationAgeLabel(p.last_location_at)}</button>`:'Sem posição'):'—'}</td>
     </tr>`);
@@ -1077,6 +1085,106 @@ function renderManagerEmployeeRows(rows){
 
   $('managerEmployeeCards').innerHTML=cards.length?cards.join(''):'<div class="empty-mobile-state">Nenhum funcionário neste filtro.</div>';
   $('teamBody').innerHTML=tableRows.join('');
+}
+
+
+async function loadManagerOvertime30Summaries(){
+  if(!isManager()) return;
+
+  const since=new Date();
+  since.setDate(since.getDate()-29);
+  since.setHours(0,0,0,0);
+
+  const [{data:events,error:eventError},{data:schedules,error:scheduleError},{data:employees,error:employeeError},{data:snapshot,error:snapshotError}]=await Promise.all([
+    client.from('attendance_events')
+      .select('employee_id,event_type,occurred_at')
+      .gte('occurred_at',since.toISOString())
+      .order('occurred_at',{ascending:true}),
+    client.from('work_schedules')
+      .select('employee_id,weekday,end_time,break_start,break_end'),
+    client.from('employees')
+      .select('id,overtime_after_minutes,lunch_zero_counts_overtime,lunch_overtime_minutes')
+      .eq('active',true),
+    client.rpc('get_overtime_snapshot')
+  ]);
+
+  if(eventError||scheduleError||employeeError) return;
+
+  const employeeRule=new Map((employees||[]).map(e=>[e.id,e]));
+  const scheduleMap=new Map();
+  (schedules||[]).forEach(s=>scheduleMap.set(`${s.employee_id}:${Number(s.weekday)}`,s));
+  const snapshotMap=new Map((snapshot||[]).map(s=>[s.employee_id,s]));
+  const grouped=new Map();
+
+  (events||[]).forEach(ev=>{
+    const key=localDateKey(ev.occurred_at);
+    const k=`${ev.employee_id}:${key}`;
+    const arr=grouped.get(k)||[];
+    arr.push(ev);
+    grouped.set(k,arr);
+  });
+
+  const todayKey=localDateKey(new Date());
+  const results=new Map();
+
+  for(const [key,dayEvents] of grouped.entries()){
+    const split=key.lastIndexOf(':');
+    const employeeId=key.slice(0,split);
+    const dateKey=key.slice(split+1);
+    const rule=employeeRule.get(employeeId);
+    const schedule=scheduleMap.get(`${employeeId}:${localWeekdayFromKey(dateKey)}`);
+    if(!rule||!schedule?.end_time) continue;
+
+    const ins=dayEvents.filter(e=>e.event_type==='check_in');
+    const outs=dayEvents.filter(e=>e.event_type==='check_out');
+    if(!ins.length) continue;
+
+    let overtime=0;
+    if(dateKey===todayKey){
+      overtime=Number(snapshotMap.get(employeeId)?.total_overtime_minutes||0);
+    }else if(outs.length){
+      const lastOut=new Date(outs[outs.length-1].occurred_at);
+      const end=makeLocalShiftDate(dateKey,schedule.end_time);
+      if(end){
+        const threshold=Number(rule.overtime_after_minutes??10);
+        const overtimeStart=new Date(end.getTime()+threshold*60000);
+        overtime=Math.max(0,Math.floor((lastOut-overtimeStart)/60000));
+      }
+
+      if(
+        rule.lunch_zero_counts_overtime!==false &&
+        schedule.break_start?.slice(0,5)==='00:00' &&
+        schedule.break_end?.slice(0,5)==='00:00'
+      ){
+        overtime+=Number(rule.lunch_overtime_minutes??60);
+      }
+    }
+
+    if(overtime>0){
+      const row=results.get(employeeId)||{total:0,days:[]};
+      row.total+=overtime;
+      row.days.push({dateKey,minutes:overtime});
+      results.set(employeeId,row);
+    }
+  }
+
+  document.querySelectorAll('[data-employee-overtime30]').forEach(el=>{
+    const id=el.dataset.employeeOvertime30;
+    const r=results.get(id)||{total:0,days:[]};
+    const totalEl=el.querySelector('.employee-overtime30-head strong');
+    const daysEl=el.querySelector('.employee-overtime30-days');
+    if(totalEl) totalEl.textContent=formatMinutes(r.total);
+    if(daysEl){
+      daysEl.innerHTML=r.days.length
+        ? r.days.slice(-4).reverse().map(d=>`<span>${esc(localDateLabel(d.dateKey))} • <b>${esc(formatMinutes(d.minutes))}</b></span>`).join('')
+        : '<span>Nenhuma hora extra nos últimos 30 dias.</span>';
+    }
+  });
+
+  document.querySelectorAll('[data-employee-overtime30-table]').forEach(el=>{
+    const r=results.get(el.dataset.employeeOvertime30Table)||{total:0};
+    el.textContent=formatMinutes(r.total);
+  });
 }
 
 async function loadManagerHome(){
@@ -1144,6 +1252,7 @@ async function loadManagerHome(){
   lastManagerRows=rows;
   renderAttentionPanel(rows);
   renderManagerEmployeeRows(rows);
+  loadManagerOvertime30Summaries().catch(err=>console.error('manager_overtime30_error',err));
 
   $('employeeTotal').textContent=employees.length;
   $('presentTotal').textContent=activeShift;

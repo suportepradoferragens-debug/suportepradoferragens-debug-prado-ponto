@@ -545,3 +545,49 @@
     flex:1;
   }
 }
+
+/* Overtime summary visible on manager dashboard */
+.employee-overtime30{
+  margin-top:12px;
+  padding:13px 14px;
+  border-radius:15px;
+  background:linear-gradient(135deg,rgba(195,162,92,.12),rgba(18,59,42,.05));
+  border:1px solid rgba(195,162,92,.22);
+}
+.employee-overtime30-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.employee-overtime30-head>div{
+  min-width:0;
+}
+.employee-overtime30-head span{
+  display:block;
+  font-size:11px;
+  color:#6c756f;
+  margin-bottom:3px;
+}
+.employee-overtime30-head strong{
+  display:block;
+  font-size:18px;
+  color:#123b2a;
+}
+.employee-overtime30-days{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:10px;
+}
+.employee-overtime30-days span{
+  font-size:11px;
+  padding:6px 8px;
+  border-radius:999px;
+  background:#fff;
+  color:#59615b;
+  border:1px solid rgba(18,59,42,.08);
+}
+.employee-overtime30-days b{
+  color:#123b2a;
+}
