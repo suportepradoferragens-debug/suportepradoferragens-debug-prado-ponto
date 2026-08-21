@@ -752,6 +752,138 @@ function buildManagerMap(employees,presenceBy){
   $('mapUpdatedAt').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 }
 
+
+function localDateKey(value){
+  return new Date(value).toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
+}
+
+function localWeekdayFromKey(dateKey){
+  const d=new Date(dateKey+'T12:00:00-03:00');
+  return d.getDay();
+}
+
+function localDateLabel(dateKey){
+  return new Date(dateKey+'T12:00:00-03:00').toLocaleDateString('pt-BR',{
+    day:'2-digit',month:'2-digit',weekday:'short'
+  }).replace('.','');
+}
+
+function makeLocalShiftDate(dateKey,timeValue){
+  if(!dateKey||!timeValue) return null;
+  const time=String(timeValue).slice(0,5);
+  return new Date(`${dateKey}T${time}:00-03:00`);
+}
+
+async function loadEmployeeOvertimeHistory(employeeId){
+  if(!$('detailOvertimeChart')) return;
+
+  $('detailOvertime30Total').textContent='—';
+  $('detailOvertime30Days').textContent='—';
+  $('detailOvertimeChart').innerHTML='<div class="overtime-empty">Calculando horas extras...</div>';
+
+  const since=new Date();
+  since.setDate(since.getDate()-29);
+  since.setHours(0,0,0,0);
+
+  const [{data:events,error:eventError},{data:schedules,error:scheduleError},{data:rule,error:ruleError},{data:snapshot,error:snapshotError}]=await Promise.all([
+    client.from('attendance_events')
+      .select('event_type,occurred_at')
+      .eq('employee_id',employeeId)
+      .gte('occurred_at',since.toISOString())
+      .order('occurred_at',{ascending:true}),
+    client.from('work_schedules')
+      .select('weekday,end_time,break_start,break_end')
+      .eq('employee_id',employeeId),
+    client.from('employees')
+      .select('overtime_after_minutes,lunch_zero_counts_overtime,lunch_overtime_minutes')
+      .eq('id',employeeId)
+      .single(),
+    client.rpc('get_overtime_snapshot')
+  ]);
+
+  if(eventError||scheduleError||ruleError){
+    $('detailOvertimeChart').innerHTML='<div class="overtime-empty">Não foi possível carregar o histórico agora.</div>';
+    return;
+  }
+
+  const scheduleByDay=new Map((schedules||[]).map(s=>[Number(s.weekday),s]));
+  const eventsByDate=new Map();
+
+  (events||[]).forEach(ev=>{
+    const key=localDateKey(ev.occurred_at);
+    const arr=eventsByDate.get(key)||[];
+    arr.push(ev);
+    eventsByDate.set(key,arr);
+  });
+
+  const threshold=Number(rule?.overtime_after_minutes??10);
+  const lunchZeroCounts=rule?.lunch_zero_counts_overtime!==false;
+  const lunchExtraConfigured=Number(rule?.lunch_overtime_minutes??60);
+  const todayKey=localDateKey(new Date());
+  const todaySnapshot=(snapshot||[]).find(x=>x.employee_id===employeeId);
+
+  const rows=[];
+
+  for(const [dateKey,dayEvents] of eventsByDate.entries()){
+    const schedule=scheduleByDay.get(localWeekdayFromKey(dateKey));
+    if(!schedule?.end_time) continue;
+
+    const ins=dayEvents.filter(e=>e.event_type==='check_in');
+    const outs=dayEvents.filter(e=>e.event_type==='check_out');
+    if(!ins.length) continue;
+
+    let overtime=0;
+
+    if(dateKey===todayKey && todaySnapshot){
+      overtime=Number(todaySnapshot.total_overtime_minutes||0);
+    }else if(outs.length){
+      const lastOut=new Date(outs[outs.length-1].occurred_at);
+      const end=makeLocalShiftDate(dateKey,schedule.end_time);
+      if(end){
+        const overtimeStart=new Date(end.getTime()+threshold*60000);
+        overtime=Math.max(0,Math.floor((lastOut-overtimeStart)/60000));
+      }
+
+      if(
+        lunchZeroCounts &&
+        schedule.break_start?.slice(0,5)==='00:00' &&
+        schedule.break_end?.slice(0,5)==='00:00'
+      ){
+        overtime+=lunchExtraConfigured;
+      }
+    }
+
+    if(overtime>0){
+      rows.push({dateKey,minutes:overtime});
+    }
+  }
+
+  rows.sort((a,b)=>a.dateKey.localeCompare(b.dateKey));
+  const total=rows.reduce((sum,r)=>sum+r.minutes,0);
+  const max=Math.max(1,...rows.map(r=>r.minutes));
+
+  $('detailOvertime30Total').textContent=formatMinutes(total);
+  $('detailOvertime30Days').textContent=String(rows.length);
+
+  if(!rows.length){
+    $('detailOvertimeChart').innerHTML='<div class="overtime-empty">Nenhuma hora extra registrada nos últimos 30 dias.</div>';
+    return;
+  }
+
+  $('detailOvertimeChart').innerHTML=rows.map(r=>{
+    const width=Math.max(8,Math.round((r.minutes/max)*100));
+    return `<div class="overtime-bar-row">
+      <div class="overtime-bar-meta">
+        <strong>${esc(localDateLabel(r.dateKey))}</strong>
+        <span>${esc(formatMinutes(r.minutes))}</span>
+      </div>
+      <div class="overtime-bar-track">
+        <div class="overtime-bar-fill" style="width:${width}%"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 async function openEmployeeDetail(employeeId){
   const emp=employeeDirectory.find(e=>e.id===employeeId);
   if(!emp) return;
@@ -759,6 +891,10 @@ async function openEmployeeDetail(employeeId){
   $('detailEmployeeName').innerHTML=`${avatarHtml(emp,'detail-avatar')}<span>${esc(emp.full_name)}</span>`;
   $('detailEmployeeSummary').innerHTML='<span class="muted">Carregando dados...</span>';
   $('detailLocationTimeline').innerHTML='<span class="muted">Carregando localizações...</span>';
+  loadEmployeeOvertimeHistory(employeeId).catch(err=>{
+    console.error('employee_overtime_history_error',err);
+    if($('detailOvertimeChart')) $('detailOvertimeChart').innerHTML='<div class="overtime-empty">Não foi possível carregar o histórico agora.</div>';
+  });
 
   try{
   const [{data:events},{data:locations},{data:overtime},{data:schedule}]=await Promise.all([
