@@ -27,11 +27,28 @@ function isManager(){return ['admin','manager'].includes(me?.role)}
 async function loadProfile(){
   const {data:{user},error:userError}=await client.auth.getUser();
   if(userError||!user) throw new Error('Não foi possível identificar o usuário autenticado.');
-  const {data,error}=await client.from('employees')
+
+  let {data,error}=await client.from('employees')
     .select('id,company_id,branch_id,full_name,email,role,active,user_id')
     .eq('user_id',user.id)
     .eq('active',true)
-    .single();
+    .maybeSingle();
+
+  if(!data && user.email){
+    const fallback=await client.from('employees')
+      .select('id,company_id,branch_id,full_name,email,role,active,user_id')
+      .ilike('email', user.email)
+      .eq('active',true)
+      .maybeSingle();
+    data=fallback.data||null;
+    error=fallback.error||null;
+
+    if(data && !data.user_id){
+      await client.from('employees').update({ user_id:user.id }).eq('id',data.id).is('user_id',null);
+      data.user_id=user.id;
+    }
+  }
+
   if(error||!data) throw new Error('Seu login ainda não está vinculado a um funcionário ativo.');
   me=data;
   const {data:b}=await client.from('branches').select('id,name,address,latitude,longitude,geofence_radius_m').eq('id',me.branch_id).single();
