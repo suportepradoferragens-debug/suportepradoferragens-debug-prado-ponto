@@ -18,27 +18,6 @@ const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
 const startToday=()=>{const d=new Date();d.setHours(0,0,0,0);return d.toISOString()};
 const endToday=()=>{const d=new Date();d.setHours(23,59,59,999);return d.toISOString()};
 const initials=n=>(n||'PF').split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
-
-function avatarHtml(person,sizeClass=''){
-  const url=person?.avatar_url;
-  const name=person?.full_name||'Funcionário';
-  if(url){
-    return `<span class="person-avatar ${sizeClass}"><img src="${esc(url)}" alt="Foto de ${esc(name)}" referrerpolicy="no-referrer"></span>`;
-  }
-  return `<span class="person-avatar ${sizeClass}"><span>${esc(initials(name))}</span></span>`;
-}
-
-function renderOwnAvatar(){
-  if(!$('avatar')||!me) return;
-  if(me.avatar_url){
-    $('avatar').innerHTML=`<img src="${esc(me.avatar_url)}" alt="Sua foto" referrerpolicy="no-referrer">`;
-    $('avatar').classList.add('has-photo');
-  }else{
-    renderOwnAvatar();
-    $('avatar').classList.remove('has-photo');
-  }
-}
-
 const dayNames=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function inviteLink(email){const u=new URL(window.location.origin);u.searchParams.set('email',email);u.searchParams.set('firstAccess','1');return u.toString()}
@@ -59,14 +38,14 @@ async function loadProfile(){
   if(userError||!user) throw new Error('Não foi possível identificar o usuário autenticado.');
 
   let {data,error}=await client.from('employees')
-    .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin,avatar_url')
+    .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin')
     .eq('user_id',user.id)
     .eq('active',true)
     .maybeSingle();
 
   if(!data && user.email){
     const fallback=await client.from('employees')
-      .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin,avatar_url')
+      .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin')
       .ilike('email', user.email)
       .eq('active',true)
       .maybeSingle();
@@ -80,15 +59,6 @@ async function loadProfile(){
   }
 
   if(error||!data) throw new Error('Seu login ainda não está vinculado a um funcionário ativo.');
-
-  const googleAvatar=user.user_metadata?.avatar_url||user.user_metadata?.picture||null;
-  if(googleAvatar && googleAvatar!==data.avatar_url){
-    const sync=await client.rpc('sync_my_avatar',{p_avatar_url:googleAvatar});
-    if(!sync.error){
-      data.avatar_url=googleAvatar;
-    }
-  }
-
   me=data;
   const {data:b}=await client.from('branches').select('id,name,address,latitude,longitude,geofence_radius_m').eq('id',me.branch_id).single();
   branch=b||null;
@@ -419,7 +389,7 @@ async function loadMyHistory(){
 }
 
 async function loadEmployees(){
-  const {data,error}=await client.from('employees').select('id,full_name,email,role,active,user_id,allow_external_after_checkin,overtime_after_minutes,lunch_zero_counts_overtime,lunch_overtime_minutes,avatar_url').order('full_name');
+  const {data,error}=await client.from('employees').select('id,full_name,email,role,active,user_id,allow_external_after_checkin,overtime_after_minutes,lunch_zero_counts_overtime,lunch_overtime_minutes').order('full_name');
   if(error){$('employeesBody').innerHTML=`<tr><td colspan="6">${esc(error.message)}</td></tr>`;return}
   const rows=data||[];
   employeeDirectory=rows;
@@ -674,7 +644,7 @@ async function openEmployeeDetail(employeeId){
   const emp=employeeDirectory.find(e=>e.id===employeeId);
   if(!emp) return;
   $('employeeDetailModal').classList.remove('hidden');
-  $('detailEmployeeName').innerHTML=`${avatarHtml(emp,'detail-avatar')}<span>${esc(emp.full_name)}</span>`;
+  $('detailEmployeeName').textContent=emp.full_name;
   $('detailEmployeeSummary').innerHTML='<span class="muted">Carregando dados...</span>';
   $('detailLocationTimeline').innerHTML='<span class="muted">Carregando localizações...</span>';
 
@@ -865,7 +835,7 @@ async function loadManagerHome(){
   const weekday=new Date().getDay();
   try{
   const [{data:emps,error:empsError},{data:events,error:eventsError},{data:presence,error:presenceError},{data:overtime,error:overtimeError},{data:schedules,error:schedulesError}]=await Promise.all([
-    client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes,avatar_url').eq('active',true).order('full_name'),
+    client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes').eq('active',true).order('full_name'),
     client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
     client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,last_latitude,last_longitude,last_accuracy_m,last_location_at,updated_at'),
     client.rpc('get_overtime_snapshot'),

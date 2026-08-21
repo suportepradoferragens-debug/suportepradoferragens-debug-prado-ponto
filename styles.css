@@ -367,16 +367,3 @@
   .employee-status-badge{align-self:flex-start}
   .employee-mobile-grid{grid-template-columns:1fr}
 }
-
-/* Google profile avatars */
-#avatar.has-photo{overflow:hidden;padding:0}
-#avatar.has-photo img{width:100%;height:100%;object-fit:cover;display:block}
-.person-avatar{display:inline-grid;place-items:center;flex:0 0 auto;width:38px;height:38px;border-radius:50%;overflow:hidden;background:#e9efe9;color:#123b2a;font-weight:850}
-.person-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-.person-avatar span{line-height:1}
-.attention-avatar-photo{width:38px;height:38px}
-.employee-card-avatar{width:42px;height:42px}
-.detail-avatar{width:44px;height:44px;margin-right:10px;vertical-align:middle}
-#detailEmployeeName{display:flex;align-items:center}
-.employee-name-line{display:flex;align-items:center;gap:10px}
-.mobile-map-person .person-avatar{margin-right:8px}
