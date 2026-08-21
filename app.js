@@ -1663,6 +1663,37 @@ function urlBase64ToUint8Array(base64String){
   return Uint8Array.from([...raw].map(ch=>ch.charCodeAt(0)));
 }
 
+async function ensureUserPushSubscription(){
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)){
+    throw new Error('Este aparelho não oferece Web Push para o Prado Ponto.');
+  }
+
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  const standalone=window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone===true;
+  if(isIOS && !standalone){
+    throw new Error('No iPhone, instale o Prado Ponto na Tela de Início para receber notificações.');
+  }
+
+  const registration=await navigator.serviceWorker.ready;
+  let subscription=await registration.pushManager.getSubscription();
+  if(!subscription){
+    subscription=await registration.pushManager.subscribe({
+      userVisibleOnly:true,
+      applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+  }
+
+  const json=subscription.toJSON();
+  const {error}=await client.rpc('save_user_push_subscription',{
+    p_endpoint:subscription.endpoint,
+    p_p256dh:json.keys?.p256dh||'',
+    p_auth:json.keys?.auth||'',
+    p_user_agent:navigator.userAgent
+  });
+  if(error) throw error;
+  return subscription;
+}
+
 async function ensureManagerPushSubscription(){
   if(!('serviceWorker' in navigator) || !('PushManager' in window)){
     throw new Error('Este aparelho não oferece Web Push para o Prado Ponto.');
@@ -1923,8 +1954,14 @@ async function checkEndShiftThanks(){
 }
 
 async function requestNotificationPermission(){
-  if(!('Notification' in window) || Notification.permission!=='default') return;
-  try{ await Notification.requestPermission(); }catch{}
+  if(!('Notification' in window)) return;
+  try{
+    let permission=Notification.permission;
+    if(permission==='default') permission=await Notification.requestPermission();
+    if(permission==='granted') await ensureUserPushSubscription();
+  }catch(e){
+    console.warn('employee_push_subscription_error',e?.message||e);
+  }
 }
 
 

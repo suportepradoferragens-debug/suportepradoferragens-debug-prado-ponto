@@ -1,4 +1,4 @@
-const CACHE='prado-ponto-v39';
+const CACHE='prado-ponto-v40';
 self.addEventListener('install',()=>self.skipWaiting());
 self.addEventListener('activate',event=>event.waitUntil((async()=>{
   const keys=await caches.keys();
@@ -26,15 +26,22 @@ self.addEventListener('push',event=>{
 self.addEventListener('notificationclick',event=>{
   event.notification.close();
   const target=event.notification?.data?.url||'/';
-  event.waitUntil(
-    clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>{
-      for(const client of list){
-        if('focus' in client){
-          client.navigate(target).catch(()=>{});
-          return client.focus();
-        }
+  event.waitUntil((async()=>{
+    try{
+      const absolute=new URL(target,self.location.origin);
+      if(absolute.origin!==self.location.origin){
+        if(clients.openWindow) return clients.openWindow(absolute.href);
+        return;
       }
-      if(clients.openWindow) return clients.openWindow(target);
-    })
-  );
+    }catch{}
+
+    const list=await clients.matchAll({type:'window',includeUncontrolled:true});
+    for(const client of list){
+      if('focus' in client){
+        try{ await client.navigate(target); }catch{}
+        return client.focus();
+      }
+    }
+    if(clients.openWindow) return clients.openWindow(target);
+  })());
 });
