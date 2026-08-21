@@ -2850,3 +2850,109 @@
     font-size:10px;
   }
 }
+
+
+/* ===== Garro promo full-width banner v41 ===== */
+.topbar{
+  gap:16px;
+}
+
+.topbar-actions{
+  flex:1;
+  justify-content:flex-end;
+}
+
+.garro-promo{
+  width:min(560px,100%);
+  max-width:560px;
+  min-height:112px;
+  padding:0;
+  overflow:hidden;
+  border-radius:20px;
+  position:relative;
+  background:transparent;
+}
+
+.garro-promo img{
+  width:100%;
+  height:112px;
+  object-fit:cover;
+  border-radius:20px;
+  flex:1 1 auto;
+}
+
+.garro-promo>span{
+  position:absolute;
+  right:12px;
+  bottom:10px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  padding:7px 10px;
+  border-radius:12px;
+  background:rgba(255,255,255,.92);
+  backdrop-filter:blur(10px);
+  max-width:190px;
+}
+
+.garro-promo b{
+  font-size:14px;
+}
+
+.garro-promo small{
+  font-size:10px;
+}
+
+@media(max-width:900px){
+  .topbar{
+    display:block;
+    padding:10px 12px 8px;
+  }
+
+  .topbar-actions{
+    display:block;
+    width:100%;
+  }
+
+  .garro-promo{
+    display:block;
+    width:100%;
+    max-width:none;
+    min-height:132px;
+    border-radius:18px;
+  }
+
+  .garro-promo img{
+    width:100%;
+    height:132px;
+    object-fit:cover;
+    border-radius:18px;
+  }
+
+  .garro-promo>span{
+    right:10px;
+    bottom:9px;
+    display:flex;
+    padding:6px 9px;
+    border-radius:11px;
+    max-width:170px;
+  }
+
+  .garro-promo b{
+    font-size:13px;
+  }
+
+  .garro-promo small{
+    font-size:9px;
+  }
+}
+
+@media(max-width:480px){
+  .garro-promo{
+    min-height:148px;
+  }
+
+  .garro-promo img{
+    height:148px;
+  }
+}
