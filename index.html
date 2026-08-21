@@ -12,6 +12,7 @@
   <link rel="apple-touch-icon" href="icon-180.png" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -111,12 +112,51 @@
       </section>
 
       <section id="managerHome" class="view">
+        <div class="manager-mobile-head">
+          <div>
+            <span class="eyebrow">ACOMPANHAMENTO</span>
+            <h2>Equipe em tempo real</h2>
+            <p class="privacy">Jornada, hora extra e última localização informada durante o trabalho.</p>
+          </div>
+          <button id="refreshManagerDashboard" class="ghost">Atualizar</button>
+        </div>
+
+        <div class="grid four manager-kpis">
+          <article class="card"><span>Funcionários ativos</span><strong id="employeeTotal">0</strong><small>Equipe</small></article>
+          <article class="card"><span>Em jornada</span><strong id="presentTotal">0</strong><small>Agora</small></article>
+          <article class="card"><span>Em hora extra</span><strong id="overtimeTotal">0</strong><small>Agora</small></article>
+          <article class="card"><span>Serviço externo</span><strong id="externalTotal">0</strong><small>Equipe liberada</small></article>
+        </div>
+
+        <article class="card map-card">
+          <div class="card-head">
+            <div><span class="eyebrow">MAPA DA EQUIPE EXTERNA</span><h3>Última localização durante a jornada</h3></div>
+            <span class="pill" id="mapUpdatedAt">—</span>
+          </div>
+          <div id="managerMap" class="manager-map"></div>
+          <p class="privacy">A posição é atualizada somente para funcionários autorizados a serviço externo e com jornada ativa. No PWA, a frequência depende de o aplicativo permanecer em uso.</p>
+        </article>
+
+        <article class="card table-card">
+          <div class="card-head">
+            <div><span class="eyebrow">EQUIPE</span><h3>Dados do trabalho de hoje</h3></div>
+            <span class="pill">PC + celular</span>
+          </div>
+          <div id="managerEmployeeCards" class="manager-employee-cards"></div>
+          <div class="table-wrap manager-desktop-table">
+            <table>
+              <thead><tr><th>Funcionário</th><th>Entrada</th><th>Saída</th><th>Hora extra</th><th>Status</th><th>Localização</th></tr></thead>
+              <tbody id="teamBody"></tbody>
+            </table>
+          </div>
+        </article>
+
         <article class="card table-card">
           <div class="card-head">
             <div><span class="eyebrow">LOCALIZAÇÃO DA UNIDADE</span><h3>Geofence do ponto</h3></div>
             <span class="pill" id="branchLocationStatus">Não configurado</span>
           </div>
-          <p class="privacy">Este aparelho deve estar fisicamente na unidade. Ao salvar, o sistema usará esta posição como centro da área permitida para o ponto.</p>
+          <p class="privacy">Use esta configuração apenas quando estiver fisicamente na unidade.</p>
           <div class="actions">
             <button id="setBranchLocationBtn" class="primary">Definir localização da unidade neste aparelho</button>
           </div>
@@ -127,18 +167,25 @@
           </div>
           <p class="privacy" id="branchLocationMsg">A localização ainda não foi definida.</p>
         </article>
-        <div class="grid three">
-          <article class="card"><span>Funcionários ativos</span><strong id="employeeTotal">0</strong><small>Equipe</small></article>
-          <article class="card"><span>Presentes agora</span><strong id="presentTotal">0</strong><small>Entrada sem saída</small></article>
-          <article class="card"><span>Registros hoje</span><strong id="todayTotal">0</strong><small>Eventos</small></article>
-        </div>
-        <article class="card table-card">
-          <div class="card-head"><div><span class="eyebrow">EQUIPE</span><h3>Status de hoje</h3></div></div>
-          <div class="table-wrap"><table><thead><tr><th>Funcionário</th><th>Entrada</th><th>Saída</th><th>Status</th></tr></thead><tbody id="teamBody"></tbody></table></div>
-        </article>
       </section>
 
-      <section id="employees" class="view">
+      <div id="employeeDetailModal" class="detail-modal hidden">
+        <div class="detail-backdrop" data-close-detail></div>
+        <article class="detail-sheet">
+          <div class="detail-sheet-head">
+            <div><span class="eyebrow">FUNCIONÁRIO</span><h3 id="detailEmployeeName">Detalhes</h3></div>
+            <button class="thanks-close" data-close-detail aria-label="Fechar">×</button>
+          </div>
+          <div id="detailEmployeeSummary" class="detail-summary"></div>
+          <div id="detailEmployeeMap" class="detail-map"></div>
+          <div>
+            <h4>Localizações registradas hoje</h4>
+            <div id="detailLocationTimeline" class="location-timeline"></div>
+          </div>
+        </article>
+      </div>
+
+            <section id="employees" class="view">
         <div class="grid two">
           <article class="card wide">
             <span class="eyebrow">NOVO FUNCIONÁRIO</span><h3>Cadastrar funcionário</h3>
@@ -297,6 +344,7 @@
     </main>
   </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="app.js"></script>
 </body>
 </html>

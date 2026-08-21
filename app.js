@@ -2,7 +2,7 @@ const SUPABASE_URL='https://coeqnnanqzlkkgkejbef.supabase.co';
 const SUPABASE_KEY='sb_publishable_1qD2SXfcWcWJ7AcvrlmErQ_VI6GZg8c';
 const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
-let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[];
+let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0;
 
 const fmtTime=iso=>new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
@@ -29,14 +29,14 @@ async function loadProfile(){
   if(userError||!user) throw new Error('Não foi possível identificar o usuário autenticado.');
 
   let {data,error}=await client.from('employees')
-    .select('id,company_id,branch_id,full_name,email,role,active,user_id')
+    .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin')
     .eq('user_id',user.id)
     .eq('active',true)
     .maybeSingle();
 
   if(!data && user.email){
     const fallback=await client.from('employees')
-      .select('id,company_id,branch_id,full_name,email,role,active,user_id')
+      .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin')
       .ilike('email', user.email)
       .eq('active',true)
       .maybeSingle();
@@ -70,9 +70,42 @@ async function loadProfile(){
     setTimeout(()=>checkWebPresence(false),500);
     setTimeout(()=>checkEndShiftThanks(),1200);
     setTimeout(()=>requestNotificationPermission(),2500);
+    if(me.allow_external_after_checkin) setTimeout(()=>startExternalLocationTracking(),1800);
   }
 }
 
+
+
+function startExternalLocationTracking(){
+  if(isManager() || !me?.allow_external_after_checkin || !navigator.geolocation || externalLocationWatchId!==null) return;
+
+  externalLocationWatchId=navigator.geolocation.watchPosition(async pos=>{
+    const now=Date.now();
+    if(now-lastExternalLocationSentAt<60000) return;
+    if(document.visibilityState==='hidden') return;
+
+    lastExternalLocationSentAt=now;
+    const {error}=await client.rpc('register_external_location',{
+      p_latitude:pos.coords.latitude,
+      p_longitude:pos.coords.longitude,
+      p_accuracy_m:pos.coords.accuracy
+    });
+
+    if(error){
+      const msg=String(error.message||'');
+      if(msg.includes('shift_not_active') || msg.includes('external_location_not_enabled')){
+        if(externalLocationWatchId!==null){
+          navigator.geolocation.clearWatch(externalLocationWatchId);
+          externalLocationWatchId=null;
+        }
+      }
+    }
+  },()=>{},{
+    enableHighAccuracy:true,
+    maximumAge:30000,
+    timeout:20000
+  });
+}
 
 function renderBranchLocation(){
   if(!$('branchLocationStatus')) return;
@@ -465,55 +498,192 @@ document.querySelectorAll('.day-schedule-row .workDay').forEach(chk=>{
   chk.addEventListener('change',()=>updateDayRowState(chk.closest('.day-schedule-row')));
 });
 
-async function loadManagerHome(){
-  const [{data:emps},{data:events},{data:presence},{data:overtime}]=await Promise.all([
-    client.from('employees').select('id,full_name,active,allow_external_after_checkin').eq('active',true).order('full_name'),
-    client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
-    client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,updated_at'),
+
+function formatMinutes(min){
+  const n=Math.max(0,Number(min||0));
+  const h=Math.floor(n/60),m=n%60;
+  return h?`${h}h ${String(m).padStart(2,'0')}min`:`${m} min`;
+}
+
+function externalWorkerIcon(){
+  return `<span class="external-worker-icon" title="Serviço externo" aria-label="Serviço externo">
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+      <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7zM6.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm11 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" fill="currentColor"/>
+    </svg>
+  </span>`;
+}
+
+function openMapsDirections(lat,lng){
+  if(lat==null||lng==null) return;
+  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat+','+lng)}`,'_blank','noopener');
+}
+
+function buildManagerMap(employees,presenceBy){
+  if(typeof L==='undefined' || !$('managerMap')) return;
+  if(managerMap){managerMap.remove();managerMap=null}
+  const center=(branch?.latitude!=null&&branch?.longitude!=null)?[Number(branch.latitude),Number(branch.longitude)]:[-23.55,-46.63];
+  managerMap=L.map('managerMap',{zoomControl:true}).setView(center,14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:19,attribution:'&copy; OpenStreetMap'
+  }).addTo(managerMap);
+
+  const bounds=[];
+  if(branch?.latitude!=null&&branch?.longitude!=null){
+    L.circle([Number(branch.latitude),Number(branch.longitude)],{
+      radius:Number(branch.geofence_radius_m||80)
+    }).addTo(managerMap).bindPopup('Unidade');
+    bounds.push([Number(branch.latitude),Number(branch.longitude)]);
+  }
+
+  employees.filter(emp=>emp.allow_external_after_checkin).forEach(emp=>{
+    const p=presenceBy.get(emp.id);
+    if(p?.last_latitude==null||p?.last_longitude==null) return;
+    const lat=Number(p.last_latitude),lng=Number(p.last_longitude);
+    bounds.push([lat,lng]);
+    L.marker([lat,lng]).addTo(managerMap)
+      .bindPopup(`<strong>${esc(emp.full_name)}</strong><br>${p.is_present?'Jornada ativa':'Jornada encerrada'}<br>Última posição: ${p.last_location_at?fmtTime(p.last_location_at):'—'}`);
+  });
+
+  if(bounds.length>1) managerMap.fitBounds(bounds,{padding:[30,30],maxZoom:16});
+  setTimeout(()=>managerMap?.invalidateSize(),100);
+  $('mapUpdatedAt').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+
+async function openEmployeeDetail(employeeId){
+  const emp=employeeDirectory.find(e=>e.id===employeeId);
+  if(!emp) return;
+  $('employeeDetailModal').classList.remove('hidden');
+  $('detailEmployeeName').textContent=emp.full_name;
+  $('detailEmployeeSummary').innerHTML='<span class="muted">Carregando dados...</span>';
+  $('detailLocationTimeline').innerHTML='<span class="muted">Carregando localizações...</span>';
+
+  const [{data:events},{data:locations},{data:overtime}]=await Promise.all([
+    client.from('attendance_events').select('event_type,occurred_at,automatic,receipt_code').eq('employee_id',employeeId).gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
+    client.from('employee_location_updates').select('latitude,longitude,accuracy_m,recorded_at').eq('employee_id',employeeId).gte('recorded_at',startToday()).lte('recorded_at',endToday()).order('recorded_at',{ascending:true}).limit(300),
     client.rpc('get_overtime_snapshot')
   ]);
-  const by=new Map();(events||[]).forEach(ev=>{const arr=by.get(ev.employee_id)||[];arr.push(ev);by.set(ev.employee_id,arr)});
+
+  const arr=events||[];
+  const ot=(overtime||[]).find(x=>x.employee_id===employeeId);
+  const ins=arr.filter(x=>x.event_type==='check_in');
+  const outs=arr.filter(x=>x.event_type==='check_out');
+
+  $('detailEmployeeSummary').innerHTML=`
+    <div><span>Entrada</span><strong>${ins.length?fmtTime(ins[0].occurred_at):'—'}</strong></div>
+    <div><span>Saída</span><strong>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</strong></div>
+    <div><span>Hora extra</span><strong>${formatMinutes(ot?.total_overtime_minutes||0)}</strong></div>
+    <div><span>Almoço extra</span><strong>${formatMinutes(ot?.lunch_overtime_minutes||0)}</strong></div>`;
+
+  const locs=locations||[];
+  $('detailLocationTimeline').innerHTML=locs.length?locs.slice().reverse().map(l=>`
+    <button class="location-row" onclick="openMapsDirections(${Number(l.latitude)},${Number(l.longitude)})">
+      <span><strong>${fmtTime(l.recorded_at)}</strong><small>${Number(l.latitude).toFixed(5)}, ${Number(l.longitude).toFixed(5)}</small></span>
+      <small>Precisão ${l.accuracy_m!=null?Math.round(Number(l.accuracy_m))+' m':'—'} • abrir mapa</small>
+    </button>`).join(''):'<span class="muted">Nenhuma localização externa registrada hoje.</span>';
+
+  if(typeof L!=='undefined'){
+    if(detailMap){detailMap.remove();detailMap=null}
+    const center=locs.length?[Number(locs[locs.length-1].latitude),Number(locs[locs.length-1].longitude)]:
+      (branch?.latitude!=null?[Number(branch.latitude),Number(branch.longitude)]:[-23.55,-46.63]);
+    detailMap=L.map('detailEmployeeMap').setView(center,15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(detailMap);
+    if(locs.length){
+      const points=locs.map(l=>[Number(l.latitude),Number(l.longitude)]);
+      L.polyline(points).addTo(detailMap);
+      L.marker(points[points.length-1]).addTo(detailMap).bindPopup('Última localização').openPopup();
+      if(points.length>1) detailMap.fitBounds(points,{padding:[25,25],maxZoom:17});
+    }
+    setTimeout(()=>detailMap?.invalidateSize(),100);
+  }
+}
+
+function closeEmployeeDetail(){
+  $('employeeDetailModal')?.classList.add('hidden');
+  if(detailMap){detailMap.remove();detailMap=null}
+}
+
+async function loadManagerHome(){
+  const [{data:emps},{data:events},{data:presence},{data:overtime}]=await Promise.all([
+    client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes').eq('active',true).order('full_name'),
+    client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
+    client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,last_latitude,last_longitude,last_accuracy_m,last_location_at,updated_at'),
+    client.rpc('get_overtime_snapshot')
+  ]);
+
+  const employees=emps||[];
+  employeeDirectory=employeeDirectory.length?employeeDirectory:employees;
+  const by=new Map();
+  (events||[]).forEach(ev=>{const arr=by.get(ev.employee_id)||[];arr.push(ev);by.set(ev.employee_id,arr)});
   const presenceBy=new Map((presence||[]).map(p=>[p.employee_id,p]));
   const overtimeBy=new Map((overtime||[]).map(o=>[o.employee_id,o]));
-  let present=0;
-  $('teamBody').innerHTML=(emps||[]).map(emp=>{
-    const arr=by.get(emp.id)||[],ins=arr.filter(x=>x.event_type==='check_in'),outs=arr.filter(x=>x.event_type==='check_out');
+
+  let activeShift=0,overtimeNow=0,external=0;
+  const cards=[];
+  const tableRows=[];
+
+  employees.forEach(emp=>{
+    const arr=by.get(emp.id)||[];
+    const ins=arr.filter(x=>x.event_type==='check_in');
+    const outs=arr.filter(x=>x.event_type==='check_out');
     const p=presenceBy.get(emp.id);
     const ot=overtimeBy.get(emp.id);
-    const onShift=p ? !!p.is_present : !!(arr.length&&arr[arr.length-1].event_type==='check_in');
-    if(onShift)present++;
-    let evidence='—';
-    if(emp.allow_external_after_checkin && onShift && !p?.geofence_verified) evidence='Em serviço externo';
-    else if(p?.wifi_verified&&p?.geofence_verified)evidence='Wi‑Fi + localização';
-    else if(p?.wifi_verified)evidence='Wi‑Fi confirmado';
-    else if(p?.geofence_verified)evidence='Localização confirmada';
-    const lastSeen=p?.last_seen_at?fmtTime(p.last_seen_at):(arr.length?fmtTime(arr[arr.length-1].occurred_at):'—');
+    const onShift=!!p?.is_present;
     const overtimeMinutes=Number(ot?.total_overtime_minutes||0);
     const lunchExtra=Number(ot?.lunch_overtime_minutes||0);
-    const otLabel=overtimeMinutes>0
-      ?`<br><small><strong>Hora extra: ${overtimeMinutes} min</strong>${lunchExtra>0?` • almoço ${lunchExtra} min`:''}</small>`
-      :'';
     const isExternal=!!emp.allow_external_after_checkin;
-    const statusLabel=isExternal&&onShift&&!p?.geofence_verified
-      ?'Em serviço externo'
-      :(onShift?'Na empresa':'Fora da empresa');
-    const externalIcon=isExternal
-      ?`<span class="external-worker-icon" title="Funcionário autorizado para serviço externo" aria-label="Serviço externo">
-          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
-            <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7zM6.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm11 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" fill="currentColor"/>
-          </svg>
-        </span>`
-      :'';
-    return `<tr>
-      <td>${externalIcon}${esc(emp.full_name)}</td>
+    const hasLocation=p?.last_latitude!=null&&p?.last_longitude!=null;
+    const outside=isExternal&&onShift&&!p?.geofence_verified;
+
+    if(onShift) activeShift++;
+    if(overtimeMinutes>0&&onShift) overtimeNow++;
+    if(isExternal) external++;
+
+    const status=outside?'Em serviço externo':onShift?'Em jornada':'Fora da empresa';
+    const statusClass=onShift?'good':'neutral';
+    const locText=hasLocation
+      ?`${Number(p.last_latitude).toFixed(5)}, ${Number(p.last_longitude).toFixed(5)}`
+      :(isExternal?'Sem posição recente':'Não aplicável');
+    const locTime=p?.last_location_at?fmtTime(p.last_location_at):'—';
+
+    cards.push(`<article class="employee-work-card">
+      <div class="employee-work-top">
+        <div class="employee-name-line">${isExternal?externalWorkerIcon():''}<div><strong>${esc(emp.full_name)}</strong><small>${isExternal?'Serviço externo autorizado':'Equipe interna'}</small></div></div>
+        <span class="badge ${statusClass}">${status}</span>
+      </div>
+      <div class="employee-work-metrics">
+        <div><span>Entrada</span><strong>${ins.length?fmtTime(ins[0].occurred_at):'—'}</strong></div>
+        <div><span>Saída</span><strong>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</strong></div>
+        <div><span>Hora extra</span><strong class="${overtimeMinutes>0?'overtime-value':''}">${formatMinutes(overtimeMinutes)}</strong></div>
+        <div><span>Almoço extra</span><strong>${formatMinutes(lunchExtra)}</strong></div>
+      </div>
+      ${isExternal?`<div class="employee-location-box">
+        <span>Última localização</span>
+        <strong>${locText}</strong>
+        <small>${hasLocation?'Atualizada às '+locTime:'Aguardando atualização do aplicativo'}</small>
+      </div>`:''}
+      <div class="employee-work-actions">
+        <button class="ghost" onclick="openEmployeeDetail('${emp.id}')">Ver jornada completa</button>
+        ${hasLocation?`<button class="primary" onclick="openMapsDirections(${Number(p.last_latitude)},${Number(p.last_longitude)})">Abrir localização</button>`:''}
+      </div>
+    </article>`);
+
+    tableRows.push(`<tr>
+      <td>${isExternal?externalWorkerIcon():''}${esc(emp.full_name)}</td>
       <td>${ins.length?fmtTime(ins[0].occurred_at):'—'}</td>
       <td>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</td>
-      <td><span class="badge ${onShift?'good':'neutral'}">${statusLabel}</span><br><small>${evidence} • ${lastSeen}</small>${otLabel}</td>
-    </tr>`;
-  }).join('');
-  $('employeeTotal').textContent=(emps||[]).length;
-  $('presentTotal').textContent=present;
-  $('todayTotal').textContent=(events||[]).length;
+      <td>${formatMinutes(overtimeMinutes)}</td>
+      <td><span class="badge ${statusClass}">${status}</span></td>
+      <td>${isExternal?(hasLocation?`<button class="mini" onclick="openMapsDirections(${Number(p.last_latitude)},${Number(p.last_longitude)})">${locTime}</button>`:'Sem posição'):'—'}</td>
+    </tr>`);
+  });
+
+  $('managerEmployeeCards').innerHTML=cards.join('');
+  $('teamBody').innerHTML=tableRows.join('');
+  $('employeeTotal').textContent=employees.length;
+  $('presentTotal').textContent=activeShift;
+  $('overtimeTotal').textContent=overtimeNow;
+  $('externalTotal').textContent=external;
+  buildManagerMap(employees,presenceBy);
 }
 
 async function loadManagerRecords(){
@@ -650,7 +820,10 @@ $('saveScheduleBtn').onclick=saveSchedule;
 if($('ruleEmployee')) $('ruleEmployee').onchange=loadEmployeeRules;
 if($('saveEmployeeRulesBtn')) $('saveEmployeeRulesBtn').onclick=saveEmployeeRules;
 if($('closeThanksBtn')) $('closeThanksBtn').onclick=()=>$('endShiftThanks').classList.add('hidden');
+if($('refreshManagerDashboard')) $('refreshManagerDashboard').onclick=loadManagerHome;
+document.querySelectorAll('[data-close-detail]').forEach(el=>el.onclick=closeEmployeeDetail);
 setInterval(()=>{ if(me&&!isManager()) checkEndShiftThanks(); },60000);
+setInterval(()=>{ if(me&&isManager()&&document.visibilityState==='visible') loadManagerHome(); },60000);
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
 client.auth.onAuthStateChange((e)=>{if(e==='SIGNED_OUT')showAuth()});
 client.channel('manager-presence-live')
@@ -669,6 +842,8 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'&&me&&!isManager()){
     checkWebPresence(false);
     checkEndShiftThanks();
+  }else if(document.visibilityState==='visible'&&me&&isManager()){
+    loadManagerHome();
   }
 });
 if('serviceWorker' in navigator){

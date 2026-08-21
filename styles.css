@@ -63,3 +63,60 @@
   cursor:pointer;
   opacity:.55
 }
+
+.grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.manager-mobile-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px}
+.manager-mobile-head h2{margin:4px 0 0}
+.manager-kpis{margin-bottom:16px}
+.map-card{margin-bottom:16px}
+.manager-map{height:360px;border-radius:16px;overflow:hidden;background:rgba(0,0,0,.04)}
+.manager-employee-cards{display:none}
+.employee-work-card{border:1px solid rgba(0,0,0,.08);border-radius:18px;padding:16px;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.035)}
+.employee-work-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.employee-name-line{display:flex;align-items:center;gap:8px;min-width:0}
+.employee-name-line>div{display:flex;flex-direction:column;min-width:0}
+.employee-name-line strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.employee-name-line small{opacity:.62;margin-top:2px}
+.employee-work-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}
+.employee-work-metrics>div,.detail-summary>div{padding:10px;border-radius:12px;background:rgba(18,59,42,.045)}
+.employee-work-metrics span,.detail-summary span,.employee-location-box span{display:block;font-size:11px;opacity:.62;margin-bottom:3px}
+.employee-work-metrics strong,.detail-summary strong{font-size:15px}
+.overtime-value{color:#9a5b00}
+.employee-location-box{padding:12px;border-radius:14px;background:rgba(18,59,42,.055);margin-bottom:14px}
+.employee-location-box strong{display:block;font-size:14px;word-break:break-word}
+.employee-location-box small{display:block;margin-top:3px;opacity:.62}
+.employee-work-actions{display:flex;gap:8px}
+.employee-work-actions button{flex:1}
+.detail-modal{position:fixed;inset:0;z-index:9999}
+.detail-modal.hidden{display:none}
+.detail-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.46);backdrop-filter:blur(3px)}
+.detail-sheet{position:absolute;right:0;top:0;bottom:0;width:min(680px,100%);background:#f7f8f7;padding:22px;overflow:auto;box-shadow:-20px 0 60px rgba(0,0,0,.16)}
+.detail-sheet-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
+.detail-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.detail-map{height:320px;border-radius:16px;overflow:hidden;margin-bottom:18px;background:rgba(0,0,0,.04)}
+.location-timeline{display:grid;gap:8px}
+.location-row{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;border-radius:12px;border:1px solid rgba(0,0,0,.08);background:#fff;text-align:left;cursor:pointer}
+.location-row span{display:flex;flex-direction:column}
+.location-row small{opacity:.65}
+@media(max-width:900px){
+  .grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .manager-desktop-table{display:none}
+  .manager-employee-cards{display:grid;grid-template-columns:1fr;gap:12px}
+  .manager-map{height:290px}
+  .manager-mobile-head{align-items:flex-start}
+  .manager-mobile-head .ghost{white-space:nowrap}
+  .detail-sheet{top:auto;height:88vh;border-radius:24px 24px 0 0}
+  .detail-summary{grid-template-columns:repeat(2,1fr)}
+  .detail-map{height:260px}
+}
+@media(max-width:520px){
+  .grid.four{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .manager-kpis .card{padding:13px}
+  .manager-kpis .card strong{font-size:24px}
+  .manager-mobile-head{display:block}
+  .manager-mobile-head button{margin-top:10px;width:100%}
+  .employee-work-metrics{grid-template-columns:repeat(2,1fr)}
+  .employee-work-actions{flex-direction:column}
+  .manager-map{height:250px}
+  .detail-sheet{padding:16px}
+}
