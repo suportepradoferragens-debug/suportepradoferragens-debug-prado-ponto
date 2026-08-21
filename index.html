@@ -174,10 +174,14 @@
               <label><input type="checkbox" class="dayCheck" value="6"> Sáb</label>
               <label><input type="checkbox" class="dayCheck" value="0"> Dom</label>
             </div>
+            <label style="display:flex;align-items:center;gap:10px;margin:12px 0">
+              <input id="scheduleHasBreak" type="checkbox" checked style="width:auto">
+              <span><strong>Possui intervalo/almoço</strong><br><small>Desmarque para jornada sem intervalo.</small></span>
+            </label>
             <div class="time-grid">
               <label>Entrada<input id="scheduleStart" type="time" value="08:00"></label>
-              <label>Início intervalo<input id="scheduleBreakStart" type="time" value="12:00"></label>
-              <label>Retorno<input id="scheduleBreakEnd" type="time" value="13:00"></label>
+              <label class="break-field">Início intervalo<input id="scheduleBreakStart" type="time" value="12:00"></label>
+              <label class="break-field">Retorno<input id="scheduleBreakEnd" type="time" value="13:00"></label>
               <label>Saída<input id="scheduleEnd" type="time" value="17:48"></label>
               <label>Tolerância (min)<input id="scheduleTolerance" type="number" min="0" max="120" value="5"></label>
             </div>

@@ -282,10 +282,26 @@ async function createEmployee(){
 }
 
 
+
+function updateBreakFields(){
+  const hasBreak=$('scheduleHasBreak')?.checked ?? true;
+  document.querySelectorAll('.break-field').forEach(el=>{
+    el.style.opacity=hasBreak?'1':'.45';
+    const input=el.querySelector('input');
+    if(input) input.disabled=!hasBreak;
+  });
+}
+
 async function loadMySchedule(){
   const {data,error}=await client.from('work_schedules').select('weekday,start_time,break_start,break_end,end_time,tolerance_minutes').eq('employee_id',me.id).order('weekday');
   if(error||!(data||[]).length){$('mySchedule').innerHTML='<span class="muted">Nenhum horário definido ainda.</span>';return}
-  $('mySchedule').innerHTML=(data||[]).map(s=>`<div class="schedule-row"><strong>${dayNames[s.weekday]}</strong><span>${s.start_time?.slice(0,5)||'—'} → ${s.break_start?.slice(0,5)||'—'} / ${s.break_end?.slice(0,5)||'—'} → ${s.end_time?.slice(0,5)||'—'}</span><small>Tolerância ${s.tolerance_minutes} min</small></div>`).join('');
+  $('mySchedule').innerHTML=(data||[]).map(s=>{
+    const hasBreak=!!(s.break_start&&s.break_end);
+    const hours=hasBreak
+      ?`${s.start_time?.slice(0,5)||'—'} → ${s.break_start.slice(0,5)} / ${s.break_end.slice(0,5)} → ${s.end_time?.slice(0,5)||'—'}`
+      :`${s.start_time?.slice(0,5)||'—'} → ${s.end_time?.slice(0,5)||'—'} • sem intervalo`;
+    return `<div class="schedule-row"><strong>${dayNames[s.weekday]}</strong><span>${hours}</span><small>Tolerância ${s.tolerance_minutes} min</small></div>`;
+  }).join('');
 }
 
 async function loadSchedulePreview(){
@@ -293,7 +309,18 @@ async function loadSchedulePreview(){
   if(!employeeId){$('schedulePreview').innerHTML='';return}
   const {data,error}=await client.from('work_schedules').select('weekday,start_time,break_start,break_end,end_time,tolerance_minutes').eq('employee_id',employeeId).order('weekday');
   if(error){$('schedulePreview').textContent=error.message;return}
-  $('schedulePreview').innerHTML=(data||[]).length?(data||[]).map(s=>`<div class="schedule-row"><strong>${dayNames[s.weekday]}</strong><span>${s.start_time?.slice(0,5)||'—'} → ${s.break_start?.slice(0,5)||'—'} / ${s.break_end?.slice(0,5)||'—'} → ${s.end_time?.slice(0,5)||'—'}</span><small>${s.tolerance_minutes} min tolerância</small></div>`).join(''):'<span class="muted">Nenhum horário definido para este funcionário.</span>';
+  if((data||[]).length && $('scheduleHasBreak')){
+    const first=data[0];
+    $('scheduleHasBreak').checked=!!(first.break_start&&first.break_end);
+    updateBreakFields();
+  }
+  $('schedulePreview').innerHTML=(data||[]).length?(data||[]).map(s=>{
+    const hasBreak=!!(s.break_start&&s.break_end);
+    const hours=hasBreak
+      ?`${s.start_time?.slice(0,5)||'—'} → ${s.break_start.slice(0,5)} / ${s.break_end.slice(0,5)} → ${s.end_time?.slice(0,5)||'—'}`
+      :`${s.start_time?.slice(0,5)||'—'} → ${s.end_time?.slice(0,5)||'—'} • sem intervalo`;
+    return `<div class="schedule-row"><strong>${dayNames[s.weekday]}</strong><span>${hours}</span><small>${s.tolerance_minutes} min tolerância</small></div>`;
+  }).join(''):'<span class="muted">Nenhum horário definido para este funcionário.</span>';
 }
 
 async function saveSchedule(){
@@ -301,12 +328,13 @@ async function saveSchedule(){
   const days=[...document.querySelectorAll('.dayCheck:checked')].map(x=>Number(x.value));
   if(!employeeId){$('scheduleMsg').textContent='Selecione um funcionário.';return}
   if(!days.length){$('scheduleMsg').textContent='Selecione pelo menos um dia.';return}
+  const hasBreak=$('scheduleHasBreak')?.checked ?? true;
   const rows=days.map(weekday=>({
     employee_id:employeeId,
     weekday,
     start_time:$('scheduleStart').value||null,
-    break_start:$('scheduleBreakStart').value||null,
-    break_end:$('scheduleBreakEnd').value||null,
+    break_start:hasBreak?($('scheduleBreakStart').value||null):null,
+    break_end:hasBreak?($('scheduleBreakEnd').value||null):null,
     end_time:$('scheduleEnd').value||null,
     tolerance_minutes:Number($('scheduleTolerance').value||5)
   }));
@@ -442,6 +470,10 @@ if($('checkPresenceNowBtn')) $('checkPresenceNowBtn').onclick=()=>checkWebPresen
 $('createEmployeeBtn').onclick=createEmployee;
 $('refreshEmployees').onclick=loadEmployees;
 $('scheduleEmployee').onchange=loadSchedulePreview;
+if($('scheduleHasBreak')){
+  $('scheduleHasBreak').onchange=updateBreakFields;
+  updateBreakFields();
+}
 $('saveScheduleBtn').onclick=saveSchedule;
 $('clearScheduleBtn').onclick=clearSchedule;
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
