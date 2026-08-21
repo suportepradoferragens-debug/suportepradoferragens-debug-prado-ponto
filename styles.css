@@ -2768,3 +2768,85 @@
     display:none;
   }
 }
+
+
+/* ===== Garro promo larger visibility v39 ===== */
+.topbar-actions{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  margin-left:auto;
+}
+
+.garro-promo{
+  width:min(430px,100%);
+  max-width:none;
+  min-height:88px;
+  padding:8px 12px 8px 8px;
+  gap:12px;
+  border-radius:18px;
+  border:1px solid rgba(0,0,0,.06);
+  box-shadow:0 14px 34px rgba(0,0,0,.10);
+}
+
+.garro-promo img{
+  width:146px;
+  height:82px;
+  border-radius:12px;
+  flex:0 0 auto;
+}
+
+.garro-promo>span{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  min-width:0;
+}
+
+.garro-promo b{
+  font-size:15px;
+  line-height:1.1;
+}
+
+.garro-promo small{
+  font-size:11px;
+  line-height:1.25;
+}
+
+@media(max-width:900px){
+  .topbar{
+    min-height:auto;
+    padding:10px 12px 8px;
+  }
+
+  .topbar-actions{
+    width:100%;
+    margin-left:0;
+  }
+
+  .garro-promo{
+    width:100%;
+    min-height:86px;
+    padding:7px;
+    gap:10px;
+    border-radius:16px;
+  }
+
+  .garro-promo img{
+    width:132px;
+    height:74px;
+    border-radius:11px;
+  }
+
+  .garro-promo>span{
+    display:flex;
+  }
+
+  .garro-promo b{
+    font-size:14px;
+  }
+
+  .garro-promo small{
+    font-size:10px;
+  }
+}
