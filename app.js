@@ -34,7 +34,7 @@ function renderOwnAvatar(){
     $('avatar').innerHTML=`<img src="${esc(me.avatar_url)}" alt="Sua foto" referrerpolicy="no-referrer">`;
     $('avatar').classList.add('has-photo');
   }else{
-    renderOwnAvatar();
+    $('avatar').textContent=initials(me.full_name);
     $('avatar').classList.remove('has-photo');
   }
 }
@@ -159,7 +159,7 @@ async function loadProfile(){
   renderBranchLocation();
   $('userName').textContent=me.full_name;
   $('userBranch').textContent=branch?.name||'Unidade';
-  $('avatar').textContent=initials(me.full_name);
+  renderOwnAvatar();
   $('roleLabel').textContent=isManager()?'Painel do gestor':'Área do funcionário';
 
   if(isManager()){
@@ -857,7 +857,7 @@ function renderAttentionPanel(rows){
   $('attentionList').innerHTML=attentionRows.length?attentionRows.slice(0,6).map(r=>`
     <button class="attention-person" onclick="openEmployeeDetail('${r.emp.id}')">
       <div class="attention-person-main">
-        <span class="attention-avatar">${esc(r.emp.full_name.split(' ').slice(0,2).map(x=>x[0]||'').join('').toUpperCase())}</span>
+        ${avatarHtml(r.emp,'attention-avatar-photo')}
         <span><strong>${esc(r.emp.full_name)}</strong><small>${attentionLabel(r)}</small></span>
       </div>
       <b>›</b>
@@ -891,7 +891,7 @@ function renderManagerEmployeeRows(rows){
 
     cards.push(`<article class="employee-work-card">
       <div class="employee-work-top">
-        <div class="employee-name-line">${isExternal?externalWorkerIcon():''}<div><strong>${esc(emp.full_name)}</strong><small>${isExternal?'Serviço externo autorizado':'Equipe interna'}</small></div></div>
+        <div class="employee-name-line">${avatarHtml(emp,'employee-card-avatar')}${isExternal?externalWorkerIcon():''}<div><strong>${esc(emp.full_name)}</strong><small>${isExternal?'Serviço externo autorizado':'Equipe interna'}</small></div></div>
         <div class="employee-status-stack"><span class="badge ${statusClass}">${status}</span>${issueChip}</div>
       </div>
       <div class="planned-line"><span>Previsto hoje</span><strong>${planned}</strong></div>
@@ -1052,7 +1052,7 @@ function buildMobileManagerMap(){
       .bindPopup(`<strong>${esc(emp.full_name)}</strong><br>${p.is_present?'Jornada ativa':'Jornada encerrada'}<br>Última posição: ${p.last_location_at?fmtTime(p.last_location_at):'—'}`);
 
     people.push(`<button class="mobile-map-person" onclick="openMapsDirections(${lat},${lng})">
-      <span class="attention-avatar">${esc(initials(emp.full_name))}</span>
+      ${avatarHtml(emp,'attention-avatar-photo')}
       <span><strong>${esc(emp.full_name)}</strong><small>${p.last_location_at?locationAgeLabel(p.last_location_at):'Sem atualização'}</small></span>
       <b>›</b>
     </button>`);
