@@ -72,6 +72,76 @@
       </header>
 
       <section id="employeeHome" class="view active-view">
+  <div class="employee-mobile-shell">
+    <div class="employee-mobile-hero">
+      <div class="employee-mobile-hero-top">
+        <div>
+          <span class="eyebrow">Minha jornada</span>
+          <h2 id="employeeGreeting">Olá</h2>
+          <p id="employeeDaySummary">Acompanhe seu expediente de hoje.</p>
+        </div>
+        <div id="employeeStatusBadge" class="employee-status-badge off">
+          <span class="status-dot"></span>
+          <strong id="employeeStatusLabel">Fora da empresa</strong>
+        </div>
+      </div>
+
+      <div class="employee-shift-card">
+        <div class="employee-shift-main">
+          <span>Jornada de hoje</span>
+          <strong id="employeePlannedShift">Carregando…</strong>
+        </div>
+        <div class="employee-shift-progress">
+          <div>
+            <span>Entrada</span>
+            <strong id="employeeEntryMini">—</strong>
+          </div>
+          <div>
+            <span>Saída</span>
+            <strong id="employeeExitMini">—</strong>
+          </div>
+          <div>
+            <span>Tempo hoje</span>
+            <strong id="employeeWorkedToday">0 min</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="employee-primary-action">
+        <div class="employee-action-copy">
+          <span id="employeeActionEyebrow">Pronto para começar?</span>
+          <strong id="employeeActionTitle">Registrar entrada</strong>
+          <small id="employeeActionHint">A localização será verificada antes do registro.</small>
+        </div>
+        <button id="employeeMainPunchBtn" class="employee-main-punch" type="button">
+          <span id="employeeMainPunchIcon">→</span>
+          <span id="employeeMainPunchText">Registrar entrada</span>
+        </button>
+      </div>
+
+      <div id="employeeLastPunchCard" class="employee-last-punch">
+        <div>
+          <span>Última batida</span>
+          <strong id="employeeLastPunch">Nenhum registro hoje</strong>
+        </div>
+        <button id="employeeReceiptShortcut" class="ghost compact" type="button">Ver comprovante</button>
+      </div>
+    </div>
+
+    <div class="employee-mobile-grid">
+      <div class="employee-info-card">
+        <span>Localização</span>
+        <strong id="employeeLocationSummary">Aguardando verificação</strong>
+        <small id="employeeLocationDetail">Abra o app na empresa para validar sua presença.</small>
+      </div>
+      <div class="employee-info-card">
+        <span>Registros hoje</span>
+        <strong id="employeeEventCountMobile">0</strong>
+        <small>Entradas e saídas registradas</small>
+      </div>
+    </div>
+  </div>
+
         <div id="endShiftThanks" class="thanks-banner hidden">
           <div class="thanks-icon" aria-hidden="true">✓</div>
           <div>

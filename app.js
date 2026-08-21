@@ -18,6 +18,27 @@ const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
 const startToday=()=>{const d=new Date();d.setHours(0,0,0,0);return d.toISOString()};
 const endToday=()=>{const d=new Date();d.setHours(23,59,59,999);return d.toISOString()};
 const initials=n=>(n||'PF').split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
+
+function avatarHtml(person,sizeClass=''){
+  const url=person?.avatar_url;
+  const name=person?.full_name||'Funcionário';
+  if(url){
+    return `<span class="person-avatar ${sizeClass}"><img src="${esc(url)}" alt="Foto de ${esc(name)}" referrerpolicy="no-referrer"></span>`;
+  }
+  return `<span class="person-avatar ${sizeClass}"><span>${esc(initials(name))}</span></span>`;
+}
+
+function renderOwnAvatar(){
+  if(!$('avatar')||!me) return;
+  if(me.avatar_url){
+    $('avatar').innerHTML=`<img src="${esc(me.avatar_url)}" alt="Sua foto" referrerpolicy="no-referrer">`;
+    $('avatar').classList.add('has-photo');
+  }else{
+    renderOwnAvatar();
+    $('avatar').classList.remove('has-photo');
+  }
+}
+
 const dayNames=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function inviteLink(email){const u=new URL(window.location.origin);u.searchParams.set('email',email);u.searchParams.set('firstAccess','1');return u.toString()}
@@ -38,14 +59,14 @@ async function loadProfile(){
   if(userError||!user) throw new Error('Não foi possível identificar o usuário autenticado.');
 
   let {data,error}=await client.from('employees')
-    .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin')
+    .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin,avatar_url')
     .eq('user_id',user.id)
     .eq('active',true)
     .maybeSingle();
 
   if(!data && user.email){
     const fallback=await client.from('employees')
-      .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin')
+      .select('id,company_id,branch_id,full_name,email,role,active,user_id,allow_external_after_checkin,avatar_url')
       .ilike('email', user.email)
       .eq('active',true)
       .maybeSingle();
@@ -59,6 +80,15 @@ async function loadProfile(){
   }
 
   if(error||!data) throw new Error('Seu login ainda não está vinculado a um funcionário ativo.');
+
+  const googleAvatar=user.user_metadata?.avatar_url||user.user_metadata?.picture||null;
+  if(googleAvatar && googleAvatar!==data.avatar_url){
+    const sync=await client.rpc('sync_my_avatar',{p_avatar_url:googleAvatar});
+    if(!sync.error){
+      data.avatar_url=googleAvatar;
+    }
+  }
+
   me=data;
   const {data:b}=await client.from('branches').select('id,name,address,latitude,longitude,geofence_radius_m').eq('id',me.branch_id).single();
   branch=b||null;
@@ -244,6 +274,84 @@ async function checkWebPresence(force=false){
   },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
 }
 
+
+function updateEmployeeMobileUI(){
+  if(!$('employeeGreeting') || !me || isManager()) return;
+
+  const first=(me.full_name||'').trim().split(/\s+/)[0]||'';
+  $('employeeGreeting').textContent=first?`Olá, ${first}`:'Olá';
+
+  const ins=todayEvents.filter(x=>x.event_type==='check_in');
+  const outs=todayEvents.filter(x=>x.event_type==='check_out');
+  const inside=todayEvents.length>0 && todayEvents[todayEvents.length-1].event_type==='check_in';
+
+  const entry=ins.length?fmtTime(ins[0].occurred_at):'—';
+  const exit=outs.length?fmtTime(outs[outs.length-1].occurred_at):'—';
+  $('employeeEntryMini').textContent=entry;
+  $('employeeExitMini').textContent=exit;
+  $('employeeEventCountMobile').textContent=todayEvents.length;
+
+  let worked=0;
+  if(ins.length){
+    const start=new Date(ins[0].occurred_at);
+    const end=outs.length?new Date(outs[outs.length-1].occurred_at):new Date();
+    worked=Math.max(0,Math.round((end-start)/60000));
+  }
+  $('employeeWorkedToday').textContent=formatMinutes(worked);
+
+  $('employeeStatusLabel').textContent=inside?'Em jornada':'Fora da empresa';
+  $('employeeStatusBadge').classList.toggle('on',inside);
+  $('employeeStatusBadge').classList.toggle('off',!inside);
+
+  $('employeeActionEyebrow').textContent=inside?'Jornada em andamento':'Pronto para começar?';
+  $('employeeActionTitle').textContent=inside?'Registrar saída':'Registrar entrada';
+  $('employeeActionHint').textContent=inside
+    ?'Confirme sua saída ao encerrar o expediente.'
+    :'A localização será verificada antes do registro.';
+  $('employeeMainPunchText').textContent=inside?'Registrar saída':'Registrar entrada';
+  $('employeeMainPunchIcon').textContent=inside?'✓':'→';
+  $('employeeMainPunchBtn').classList.toggle('checkout',inside);
+
+  const last=todayEvents.length?todayEvents[todayEvents.length-1]:null;
+  $('employeeLastPunch').textContent=last
+    ?`${last.event_type==='check_in'?'Entrada':'Saída'} às ${fmtTime(last.occurred_at)}`
+    :'Nenhum registro hoje';
+  $('employeeReceiptShortcut').disabled=!last?.receipt_code;
+
+  if(currentLocation){
+    $('employeeLocationSummary').textContent=currentLocation.verified?'Dentro da unidade':'Fora do raio';
+    $('employeeLocationDetail').textContent=currentLocation.verified
+      ?'Localização validada para o registro.'
+      :'Sua localização atual está fora do raio configurado.';
+  }else{
+    $('employeeLocationSummary').textContent=inside?'Presença em andamento':'Aguardando verificação';
+    $('employeeLocationDetail').textContent=inside
+      ?'Sua jornada está ativa.'
+      :'Abra o app na empresa para validar sua presença.';
+  }
+}
+
+async function loadEmployeePlannedShift(){
+  if(!$('employeePlannedShift') || !me || isManager()) return;
+  const weekday=new Date().getDay();
+  const {data}=await client.from('work_schedules')
+    .select('start_time,break_start,break_end,end_time')
+    .eq('employee_id',me.id)
+    .eq('weekday',weekday)
+    .maybeSingle();
+
+  if(!data){
+    $('employeePlannedShift').textContent='Sem jornada prevista hoje';
+    $('employeeDaySummary').textContent='Hoje não há horário programado.';
+    return;
+  }
+
+  const start=data.start_time?.slice(0,5)||'—';
+  const end=data.end_time?.slice(0,5)||'—';
+  $('employeePlannedShift').textContent=`${start} → ${end}`;
+  $('employeeDaySummary').textContent=`Expediente previsto: ${start} às ${end}.`;
+}
+
 async function loadToday(){
   const {data,error}=await client.from('attendance_events').select('*').eq('employee_id',me.id)
     .gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true});
@@ -264,6 +372,7 @@ function renderToday(){
   $('checkInBtn').disabled=inside;
   $('checkOutBtn').disabled=!inside;
   $('timeline').innerHTML=todayEvents.length?[...todayEvents].reverse().map(e=>`<div class="event"><time>${fmtTime(e.occurred_at)}</time><div><strong>${e.event_type==='check_in'?'Entrada':'Saída'}</strong><small>${e.geofence_verified?'Geofence confirmado':'Sem validação de geofence'}</small></div></div>`).join(''):'<div class="empty">Nenhum ponto registrado hoje.</div>';
+  updateEmployeeMobileUI();
 }
 
 async function saveEvent(type){
@@ -284,6 +393,7 @@ async function saveEvent(type){
   currentLocation=null;
   if(row?.receipt_code) showReceipt(row);
   await loadToday();
+  updateEmployeeMobileUI();
 }
 
 function distanceM(a,b,c,d){const R=6371e3,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180;const x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))}
@@ -298,6 +408,7 @@ function verifyLocation(){
       $('locationInfo').textContent=`Distância aproximada: ${Math.round(d)} m • ${loc.verified?'dentro':'fora'} do raio.`;
     }else $('locationInfo').textContent='Localização capturada; coordenadas da unidade ainda não configuradas.';
     currentLocation=loc;
+    updateEmployeeMobileUI();
   },()=>{$('locationInfo').textContent='Não foi possível acessar a localização.'},{enableHighAccuracy:true,timeout:10000});
 }
 
@@ -308,7 +419,7 @@ async function loadMyHistory(){
 }
 
 async function loadEmployees(){
-  const {data,error}=await client.from('employees').select('id,full_name,email,role,active,user_id,allow_external_after_checkin,overtime_after_minutes,lunch_zero_counts_overtime,lunch_overtime_minutes').order('full_name');
+  const {data,error}=await client.from('employees').select('id,full_name,email,role,active,user_id,allow_external_after_checkin,overtime_after_minutes,lunch_zero_counts_overtime,lunch_overtime_minutes,avatar_url').order('full_name');
   if(error){$('employeesBody').innerHTML=`<tr><td colspan="6">${esc(error.message)}</td></tr>`;return}
   const rows=data||[];
   employeeDirectory=rows;
@@ -563,7 +674,7 @@ async function openEmployeeDetail(employeeId){
   const emp=employeeDirectory.find(e=>e.id===employeeId);
   if(!emp) return;
   $('employeeDetailModal').classList.remove('hidden');
-  $('detailEmployeeName').textContent=emp.full_name;
+  $('detailEmployeeName').innerHTML=`${avatarHtml(emp,'detail-avatar')}<span>${esc(emp.full_name)}</span>`;
   $('detailEmployeeSummary').innerHTML='<span class="muted">Carregando dados...</span>';
   $('detailLocationTimeline').innerHTML='<span class="muted">Carregando localizações...</span>';
 
@@ -754,7 +865,7 @@ async function loadManagerHome(){
   const weekday=new Date().getDay();
   try{
   const [{data:emps,error:empsError},{data:events,error:eventsError},{data:presence,error:presenceError},{data:overtime,error:overtimeError},{data:schedules,error:schedulesError}]=await Promise.all([
-    client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes').eq('active',true).order('full_name'),
+    client.from('employees').select('id,full_name,email,active,allow_external_after_checkin,overtime_after_minutes,avatar_url').eq('active',true).order('full_name'),
     client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
     client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,last_latitude,last_longitude,last_accuracy_m,last_location_at,updated_at'),
     client.rpc('get_overtime_snapshot'),
@@ -1002,7 +1113,7 @@ async function boot(){
     sessionStorage.removeItem('pradoInviteEmail');
     history.replaceState({},'',location.pathname);
     showApp();
-    if(!isManager()){await loadToday();await loadMySchedule()}
+    if(!isManager()){await loadToday();await loadMySchedule();await loadEmployeePlannedShift();updateEmployeeMobileUI()}
   }catch(e){
     console.error('boot_profile_error',e);
     showAuth();
@@ -1021,6 +1132,16 @@ $('checkOutBtn').onclick=()=>saveEvent('check_out');
 $('useLocation').onclick=verifyLocation;
 if($('setBranchLocationBtn')) $('setBranchLocationBtn').onclick=setBranchLocation;
 if($('checkPresenceNowBtn')) $('checkPresenceNowBtn').onclick=()=>checkWebPresence(true);
+
+if($('employeeMainPunchBtn')) $('employeeMainPunchBtn').onclick=()=>{
+  const inside=todayEvents.length>0&&todayEvents[todayEvents.length-1].event_type==='check_in';
+  saveEvent(inside?'check_out':'check_in');
+};
+if($('employeeReceiptShortcut')) $('employeeReceiptShortcut').onclick=()=>{
+  const last=[...todayEvents].reverse().find(x=>x.receipt_code);
+  if(last) showReceipt(last);
+};
+
 $('createEmployeeBtn').onclick=createEmployee;
 $('refreshEmployees').onclick=loadEmployees;
 $('scheduleEmployee').onchange=loadSchedulePreview;
