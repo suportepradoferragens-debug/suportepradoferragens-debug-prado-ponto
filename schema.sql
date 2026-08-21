@@ -1,0 +1,11 @@
+-- PostgreSQL / Supabase - MVP Prado Ponto
+create extension if not exists pgcrypto;
+create table companies(id uuid primary key default gen_random_uuid(),name text not null,created_at timestamptz default now());
+create table branches(id uuid primary key default gen_random_uuid(),company_id uuid references companies(id) on delete cascade,name text not null,latitude numeric not null,longitude numeric not null,radius_m integer not null default 80,created_at timestamptz default now());
+create table employees(id uuid primary key default gen_random_uuid(),company_id uuid references companies(id) on delete cascade,auth_user_id uuid unique,full_name text not null,active boolean default true,created_at timestamptz default now());
+create table devices(id uuid primary key default gen_random_uuid(),employee_id uuid references employees(id) on delete cascade,device_key text unique not null,label text,authorized boolean default false,last_seen_at timestamptz,created_at timestamptz default now());
+create type attendance_event_type as enum('check_in','check_out','break_start','break_end');
+create table attendance_events(id uuid primary key default gen_random_uuid(),employee_id uuid references employees(id) on delete cascade,branch_id uuid references branches(id),device_id uuid references devices(id),event_type attendance_event_type not null,server_time timestamptz not null default now(),latitude numeric,longitude numeric,accuracy_m numeric,geofence_verified boolean default false,device_verified boolean default false,presence_verified boolean default false,automatic boolean default true,source text,metadata jsonb default '{}'::jsonb,created_at timestamptz default now());
+create table adjustment_requests(id uuid primary key default gen_random_uuid(),employee_id uuid references employees(id),event_id uuid references attendance_events(id),reason text not null,status text not null default 'pending',requested_at timestamptz default now(),reviewed_at timestamptz,reviewed_by uuid);
+create table audit_logs(id bigserial primary key,actor_user_id uuid,action text not null,entity text not null,entity_id text,payload jsonb default '{}'::jsonb,created_at timestamptz default now());
+create index attendance_employee_time_idx on attendance_events(employee_id,server_time desc);
