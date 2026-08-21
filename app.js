@@ -67,6 +67,7 @@ async function loadProfile(){
     $('managerNav').classList.add('hidden');
     $('employeeNav').classList.remove('hidden');
     openView('employeeHome');
+    setTimeout(()=>checkWebPresence(false),500);
   }
 }
 
@@ -122,6 +123,75 @@ async function setBranchLocation(){
       3:'A localização demorou demais. Tente novamente em um local com melhor sinal.'
     };
     $('branchLocationMsg').textContent=msgs[err.code]||'Erro ao obter localização.';
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+}
+
+
+let presenceCheckRunning=false;
+let lastPresenceCheckAt=0;
+
+function showReceipt(row){
+  if(!row?.receipt_code) return;
+  $('receiptBox').classList.remove('hidden');
+  $('receiptType').textContent=row.event_type==='check_in'?'Entrada':'Saída';
+  $('receiptDate').textContent=fmtDate(row.occurred_at);
+  $('receiptTime').textContent=fmtTime(row.occurred_at);
+  $('receiptCode').textContent=row.receipt_code;
+}
+
+async function checkWebPresence(force=false){
+  if(!me || isManager() || !navigator.geolocation || presenceCheckRunning) return;
+  const now=Date.now();
+  if(!force && now-lastPresenceCheckAt<60000) return;
+  presenceCheckRunning=true;
+  lastPresenceCheckAt=now;
+  $('autoPresenceTitle').textContent='Obtendo localização...';
+  $('autoPresenceMsg').textContent='Confirme a permissão de localização se o iPhone solicitar.';
+  $('checkPresenceNowBtn').disabled=true;
+
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    try{
+      const {data,error}=await client.rpc('register_web_presence',{
+        p_latitude:pos.coords.latitude,
+        p_longitude:pos.coords.longitude,
+        p_accuracy_m:pos.coords.accuracy
+      });
+      if(error) throw error;
+      const row=Array.isArray(data)?data[0]:data;
+      const distance=Math.round(Number(row?.distance_m||0));
+      if(row?.action==='registered'){
+        showReceipt(row);
+        const entering=row.event_type==='check_in';
+        $('autoPresenceTitle').textContent=entering?'Entrada registrada':'Saída registrada';
+        $('autoPresencePill').textContent=entering?'Na empresa':'Fora da empresa';
+        $('autoPresenceMsg').textContent=`Registro automático concluído. Distância aproximada da unidade: ${distance} m.`;
+        await loadToday();
+      }else{
+        $('autoPresenceTitle').textContent=row?.is_present?'Você está na empresa':'Você está fora da empresa';
+        $('autoPresencePill').textContent=row?.is_present?'Na empresa':'Fora da empresa';
+        $('autoPresenceMsg').textContent=`Nenhuma nova batida necessária. Distância aproximada da unidade: ${distance} m.`;
+      }
+    }catch(e){
+      let msg=e.message||'Não foi possível verificar a presença.';
+      if(msg.includes('location_accuracy_too_low')) msg='A precisão da localização está baixa. Ative Localização Precisa para o Prado Ponto e tente novamente.';
+      $('autoPresenceTitle').textContent='Não foi possível registrar';
+      $('autoPresencePill').textContent='Atenção';
+      $('autoPresenceMsg').textContent=msg;
+    }finally{
+      presenceCheckRunning=false;
+      $('checkPresenceNowBtn').disabled=false;
+    }
+  },err=>{
+    presenceCheckRunning=false;
+    $('checkPresenceNowBtn').disabled=false;
+    const msgs={
+      1:'Permissão de localização negada. No iPhone, abra Ajustes > Privacidade e Segurança > Serviços de Localização > Safari/Prado Ponto e permita o acesso com Localização Precisa.',
+      2:'Não foi possível obter sua localização. Verifique se os Serviços de Localização estão ativos.',
+      3:'A localização demorou demais. Tente novamente.'
+    };
+    $('autoPresenceTitle').textContent='Localização necessária';
+    $('autoPresencePill').textContent='Atenção';
+    $('autoPresenceMsg').textContent=msgs[err.code]||'Erro ao obter localização.';
   },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
 }
 
@@ -368,6 +438,7 @@ $('checkInBtn').onclick=()=>saveEvent('check_in');
 $('checkOutBtn').onclick=()=>saveEvent('check_out');
 $('useLocation').onclick=verifyLocation;
 if($('setBranchLocationBtn')) $('setBranchLocationBtn').onclick=setBranchLocation;
+if($('checkPresenceNowBtn')) $('checkPresenceNowBtn').onclick=()=>checkWebPresence(true);
 $('createEmployeeBtn').onclick=createEmployee;
 $('refreshEmployees').onclick=loadEmployees;
 $('scheduleEmployee').onchange=loadSchedulePreview;
@@ -386,5 +457,11 @@ if(inviteEmail){
   $('inviteEmailLabel').textContent=inviteEmail;
   $('authIntro').textContent='Use no Google exatamente a conta abaixo para acessar seu ponto.';
   setAuthMsg('Convite reconhecido. Toque em Continuar com Google.');
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&me&&!isManager()) checkWebPresence(false);
+});
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 }
 boot();

@@ -4,6 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Prado Ponto</title>
+  <meta name="theme-color" content="#123b2a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Prado Ponto" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"></script>
 </head>
@@ -51,6 +57,23 @@
       </header>
 
       <section id="employeeHome" class="view active-view">
+        <article class="card table-card" id="autoPresenceCard">
+          <div class="card-head">
+            <div><span class="eyebrow">PONTO AUTOMÁTICO</span><h3 id="autoPresenceTitle">Verificando presença...</h3></div>
+            <span class="pill" id="autoPresencePill">Localização</span>
+          </div>
+          <p class="privacy" id="autoPresenceMsg">Ao abrir o Prado Ponto, sua localização é conferida para registrar entrada ou saída quando houver mudança de presença.</p>
+          <div id="receiptBox" class="hidden">
+            <div class="grid three">
+              <article class="card"><span>Registro</span><strong id="receiptType">—</strong><small id="receiptDate">—</small></article>
+              <article class="card"><span>Horário</span><strong id="receiptTime">—</strong><small>Servidor</small></article>
+              <article class="card"><span>Comprovante</span><strong id="receiptCode" style="font-size:14px">—</strong><small>Guarde este código</small></article>
+            </div>
+          </div>
+          <div class="actions">
+            <button id="checkPresenceNowBtn" class="primary">Verificar presença agora</button>
+          </div>
+        </article>
         <div class="hero-card"><div><span class="eyebrow">STATUS ATUAL</span><h2 id="statusText">Carregando...</h2><p id="statusHint">Consultando registros.</p></div><div class="status-orb" id="statusOrb"></div></div>
         <div class="grid three">
           <article class="card"><span>Entrada</span><strong id="checkIn">—</strong><small>Hoje</small></article>
