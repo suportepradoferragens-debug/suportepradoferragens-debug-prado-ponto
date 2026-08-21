@@ -12,7 +12,7 @@ function ensureSupabaseClient(){
   client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
   return client;
 }
-let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,mobileManagerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0,lastManagerPresenceBy=new Map(),lastManagerEmployees=[],lastManagerRows=[],lastManagerSchedules=new Map(),activeAttentionFilter=null,activeDetailEmployeeId=null,detailLiveReloadTimer=null,lastExternalGpsReceivedAt=null,lastExternalGpsSentAt=null,lastExternalGpsError=null,lastExternalGpsCoords=null;
+let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,mobileManagerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0,lastExternalSentCoords=null,lastExternalWasMoving=false,lastManagerPresenceBy=new Map(),lastManagerEmployees=[],lastManagerRows=[],lastManagerSchedules=new Map(),activeAttentionFilter=null,activeDetailEmployeeId=null,detailLiveReloadTimer=null,lastExternalGpsReceivedAt=null,lastExternalGpsSentAt=null,lastExternalGpsError=null,lastExternalGpsCoords=null;
 
 const fmtTime=iso=>new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
@@ -268,23 +268,42 @@ async function testExternalLocationNow(){
 async function sendExternalLocationPosition(pos,force=false){
   if(isManager() || !me?.allow_external_after_checkin || !pos?.coords) return;
   const now=Date.now();
-
-  lastExternalGpsReceivedAt=now;
-  lastExternalGpsCoords={
+  const currentCoords={
     latitude:pos.coords.latitude,
     longitude:pos.coords.longitude,
     accuracy:pos.coords.accuracy
   };
+
+  lastExternalGpsReceivedAt=now;
+  lastExternalGpsCoords=currentCoords;
   lastExternalGpsError=null;
   renderExternalGpsDiagnostics();
 
-  if(!force && now-lastExternalLocationSentAt<5000) return;
+  const deviceSpeedKmh=pos.coords.speed!=null && Number.isFinite(Number(pos.coords.speed))
+    ? Math.max(0,Number(pos.coords.speed)*3.6)
+    : null;
+
+  let movedM=null;
+  if(lastExternalSentCoords){
+    movedM=distanceM(
+      lastExternalSentCoords.latitude,lastExternalSentCoords.longitude,
+      currentCoords.latitude,currentCoords.longitude
+    );
+  }
+
+  const moving=
+    (deviceSpeedKmh!=null && deviceSpeedKmh>=5) ||
+    (movedM!=null && movedM>=12) ||
+    lastExternalWasMoving;
+
+  const minIntervalMs=moving?5000:30000;
+  if(!force && now-lastExternalLocationSentAt<minIntervalMs) return;
 
   lastExternalLocationSentAt=now;
   const {error}=await client.rpc('register_external_location',{
-    p_latitude:pos.coords.latitude,
-    p_longitude:pos.coords.longitude,
-    p_accuracy_m:pos.coords.accuracy
+    p_latitude:currentCoords.latitude,
+    p_longitude:currentCoords.longitude,
+    p_accuracy_m:currentCoords.accuracy
   });
 
   if(error){
@@ -296,6 +315,11 @@ async function sendExternalLocationPosition(pos,force=false){
     }
     throw error;
   }
+
+  lastExternalSentCoords=currentCoords;
+  lastExternalWasMoving=
+    (deviceSpeedKmh!=null && deviceSpeedKmh>=3) ||
+    (movedM!=null && movedM>=8);
 
   lastExternalGpsSentAt=Date.now();
   lastExternalGpsError=null;
@@ -1014,7 +1038,7 @@ async function openEmployeeDetail(employeeId){
         const id=activeDetailEmployeeId;
         openEmployeeDetail(id).catch(()=>{});
       }
-    },15000);
+    },7000);
   }
   const emp=employeeDirectory.find(e=>e.id===employeeId);
   if(!emp) return;
@@ -1030,13 +1054,13 @@ async function openEmployeeDetail(employeeId){
   try{
   const [{data:events},{data:locations},{data:overtime},{data:schedule}]=await Promise.all([
     client.from('attendance_events').select('event_type,occurred_at,automatic,receipt_code').eq('employee_id',employeeId).gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
-    client.from('employee_location_updates').select('latitude,longitude,accuracy_m,speed_kmh,recorded_at').eq('employee_id',employeeId).gte('recorded_at',startToday()).lte('recorded_at',endToday()).order('recorded_at',{ascending:true}).limit(300),
+    client.from('employee_location_updates').select('latitude,longitude,accuracy_m,speed_kmh,recorded_at').eq('employee_id',employeeId).gte('recorded_at',startToday()).lte('recorded_at',endToday()).order('recorded_at',{ascending:false}).limit(300),
     client.rpc('get_overtime_snapshot'),
     client.from('work_schedules').select('start_time,break_start,break_end,end_time,tolerance_minutes').eq('employee_id',employeeId).eq('weekday',new Date().getDay()).maybeSingle()
   ]);
 
   const arr=events||[];
-  const locs=locations||[];
+  const locs=(locations||[]).slice().reverse();
   const ot=(overtime||[]).find(x=>x.employee_id===employeeId);
   const ins=arr.filter(x=>x.event_type==='check_in');
   const outs=arr.filter(x=>x.event_type==='check_out');
@@ -1434,7 +1458,7 @@ async function loadManagerHome(){
 
   if($('mobileMapSummary')){
     $('mobileMapSummary').textContent=external
-      ?`${external} funcionário${external===1?'':'s'} externo${external===1?'':'s'} • GPS ao vivo, velocidade e percurso no painel do gestor.`
+      ?`${external} funcionário${external===1?'':'s'} externo${external===1?'':'s'} • GPS ao vivo otimizado, velocidade e percurso recente no painel do gestor.`
       :'Nenhum funcionário externo configurado.';
   }
 
@@ -1483,9 +1507,9 @@ async function buildMobileManagerMap(){
       .select('employee_id,latitude,longitude,accuracy_m,speed_kmh,recorded_at')
       .gte('recorded_at',startToday())
       .lte('recorded_at',endToday())
-      .order('recorded_at',{ascending:true})
+      .order('recorded_at',{ascending:false})
       .limit(1000);
-    trailRows=data||[];
+    trailRows=(data||[]).slice().reverse();
   }catch{}
 
   const trailsByEmployee=new Map();
@@ -2144,7 +2168,7 @@ document.querySelectorAll('.attention-card').forEach(btn=>{
 });
 document.querySelectorAll('[data-close-detail]').forEach(el=>el.onclick=closeEmployeeDetail);
 setInterval(()=>{ if(me&&!isManager()) checkEndShiftThanks(); },60000);
-setInterval(()=>{ if(me&&isManager()&&document.visibilityState==='visible') loadManagerHome(); },15000);
+setInterval(()=>{ if(me&&isManager()&&document.visibilityState==='visible') loadManagerHome(); },7000);
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
 try{ ensureSupabaseClient(); }catch(e){
   setAuthMsg(e.message||'Não foi possível carregar o login.',true);
