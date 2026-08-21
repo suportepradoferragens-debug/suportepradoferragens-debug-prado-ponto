@@ -161,7 +161,29 @@
     </div>
   </div>
 
-        <div id="endShiftThanks" class="thanks-banner hidden">
+        
+<section id="externalGpsDiagnostics" class="gps-diag-card">
+  <div class="gps-diag-head">
+    <div>
+      <span class="eyebrow">Diagnóstico de localização</span>
+      <strong>Status do GPS externo</strong>
+    </div>
+    <span id="gpsDiagStatus" class="gps-diag-pill">GPS parado</span>
+  </div>
+  <div class="gps-diag-grid">
+    <div><span>Último GPS recebido</span><strong id="gpsDiagReceived">—</strong></div>
+    <div><span>Último envio ao servidor</span><strong id="gpsDiagSent">—</strong></div>
+    <div class="gps-diag-wide"><span>Última coordenada</span><strong id="gpsDiagCoords">—</strong></div>
+  </div>
+  <div class="gps-diag-error">
+    <span>Diagnóstico</span>
+    <strong id="gpsDiagError">Nenhum erro registrado</strong>
+  </div>
+  <button id="gpsDiagTestBtn" class="primary gps-diag-test">Testar localização agora</button>
+  <small>Para teste, mantenha o Prado Ponto aberto e a localização do Android permitida.</small>
+</section>
+
+<div id="endShiftThanks" class="thanks-banner hidden">
           <div class="thanks-icon" aria-hidden="true">✓</div>
           <div>
             <strong>Jornada concluída</strong>

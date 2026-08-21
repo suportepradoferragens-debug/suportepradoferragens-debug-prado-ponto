@@ -2472,3 +2472,101 @@
   font-size:10px;
   color:var(--muted);
 }
+
+
+/* ===== External GPS diagnostics v34 ===== */
+.gps-diag-card{
+  margin-top:12px;
+  padding:14px;
+  border-radius:18px;
+  background:rgba(255,255,255,.94);
+  border:1px solid rgba(18,59,42,.08);
+  box-shadow:0 8px 22px rgba(0,0,0,.06);
+}
+
+.gps-diag-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:12px;
+}
+
+.gps-diag-head>div{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+
+.gps-diag-pill{
+  font-size:10px;
+  font-weight:800;
+  padding:6px 9px;
+  border-radius:999px;
+  background:#f2f2f2;
+  color:#666;
+}
+
+.gps-diag-pill.good{
+  background:rgba(27,126,75,.12);
+  color:#1b7e4b;
+}
+
+.gps-diag-pill.bad{
+  background:rgba(180,50,50,.10);
+  color:#a33232;
+}
+
+.gps-diag-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+
+.gps-diag-grid>div,
+.gps-diag-error{
+  padding:10px;
+  border-radius:12px;
+  background:rgba(18,59,42,.045);
+}
+
+.gps-diag-grid span,
+.gps-diag-error span{
+  display:block;
+  font-size:9px;
+  color:var(--muted);
+  margin-bottom:3px;
+}
+
+.gps-diag-grid strong,
+.gps-diag-error strong{
+  font-size:12px;
+  word-break:break-word;
+}
+
+.gps-diag-wide{
+  grid-column:1/-1;
+}
+
+.gps-diag-error{
+  margin-top:8px;
+}
+
+.gps-diag-test{
+  width:100%;
+  margin-top:10px;
+}
+
+.gps-diag-card>small{
+  display:block;
+  margin-top:8px;
+  color:var(--muted);
+  line-height:1.35;
+}
+
+@media(max-width:900px){
+  .gps-diag-card{
+    margin:10px 0 0;
+    padding:12px;
+  }
+}

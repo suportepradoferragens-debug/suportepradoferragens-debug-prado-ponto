@@ -12,7 +12,7 @@ function ensureSupabaseClient(){
   client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
   return client;
 }
-let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,mobileManagerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0,lastManagerPresenceBy=new Map(),lastManagerEmployees=[],lastManagerRows=[],lastManagerSchedules=new Map(),activeAttentionFilter=null,activeDetailEmployeeId=null,detailLiveReloadTimer=null;
+let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[],managerMap=null,mobileManagerMap=null,detailMap=null,externalLocationWatchId=null,lastExternalLocationSentAt=0,lastManagerPresenceBy=new Map(),lastManagerEmployees=[],lastManagerRows=[],lastManagerSchedules=new Map(),activeAttentionFilter=null,activeDetailEmployeeId=null,detailLiveReloadTimer=null,lastExternalGpsReceivedAt=null,lastExternalGpsSentAt=null,lastExternalGpsError=null,lastExternalGpsCoords=null;
 
 const fmtTime=iso=>new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
@@ -196,16 +196,89 @@ async function loadProfile(){
     setTimeout(()=>checkWebPresence(false),500);
     setTimeout(()=>checkEndShiftThanks(),1200);
     setTimeout(()=>requestNotificationPermission(),2500);
-    if(me.allow_external_after_checkin) setTimeout(()=>startExternalLocationTracking(),1800);
+    if(me.allow_external_after_checkin){ setTimeout(()=>startExternalLocationTracking(),1800); setTimeout(()=>renderExternalGpsDiagnostics(),2200); }
   }
 }
 
 
 
-async function sendExternalLocationPosition(pos){
+
+function renderExternalGpsDiagnostics(){
+  if(!$('gpsDiagStatus')) return;
+  const active=externalLocationWatchId!==null;
+  $('gpsDiagStatus').textContent=active?'GPS ativo':'GPS parado';
+  $('gpsDiagStatus').classList.toggle('good',active);
+  $('gpsDiagStatus').classList.toggle('bad',!active);
+
+  $('gpsDiagReceived').textContent=lastExternalGpsReceivedAt
+    ? new Date(lastExternalGpsReceivedAt).toLocaleTimeString('pt-BR')
+    : '—';
+
+  $('gpsDiagSent').textContent=lastExternalGpsSentAt
+    ? new Date(lastExternalGpsSentAt).toLocaleTimeString('pt-BR')
+    : '—';
+
+  $('gpsDiagCoords').textContent=lastExternalGpsCoords
+    ? `${Number(lastExternalGpsCoords.latitude).toFixed(6)}, ${Number(lastExternalGpsCoords.longitude).toFixed(6)}`
+    : '—';
+
+  $('gpsDiagError').textContent=lastExternalGpsError||'Nenhum erro registrado';
+}
+
+async function testExternalLocationNow(){
+  if(!navigator.geolocation){
+    lastExternalGpsError='Geolocalização indisponível neste aparelho.';
+    renderExternalGpsDiagnostics();
+    return;
+  }
+
+  const btn=$('gpsDiagTestBtn');
+  if(btn){btn.disabled=true;btn.textContent='Testando...';}
+
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    lastExternalGpsReceivedAt=Date.now();
+    lastExternalGpsCoords={
+      latitude:pos.coords.latitude,
+      longitude:pos.coords.longitude,
+      accuracy:pos.coords.accuracy
+    };
+    lastExternalGpsError=null;
+    renderExternalGpsDiagnostics();
+
+    try{
+      await sendExternalLocationPosition(pos,true);
+    }catch(e){
+      lastExternalGpsError=e?.message||'Erro ao enviar localização.';
+      renderExternalGpsDiagnostics();
+    }finally{
+      if(btn){btn.disabled=false;btn.textContent='Testar localização agora';}
+    }
+  },err=>{
+    const msgs={
+      1:'Permissão de localização negada.',
+      2:'Localização indisponível.',
+      3:'Tempo esgotado ao obter localização.'
+    };
+    lastExternalGpsError=msgs[err.code]||'Erro ao obter localização.';
+    renderExternalGpsDiagnostics();
+    if(btn){btn.disabled=false;btn.textContent='Testar localização agora';}
+  },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+}
+
+async function sendExternalLocationPosition(pos,force=false){
   if(isManager() || !me?.allow_external_after_checkin || !pos?.coords) return;
   const now=Date.now();
-  if(now-lastExternalLocationSentAt<5000) return;
+
+  lastExternalGpsReceivedAt=now;
+  lastExternalGpsCoords={
+    latitude:pos.coords.latitude,
+    longitude:pos.coords.longitude,
+    accuracy:pos.coords.accuracy
+  };
+  lastExternalGpsError=null;
+  renderExternalGpsDiagnostics();
+
+  if(!force && now-lastExternalLocationSentAt<5000) return;
 
   lastExternalLocationSentAt=now;
   const {error}=await client.rpc('register_external_location',{
@@ -215,11 +288,18 @@ async function sendExternalLocationPosition(pos){
   });
 
   if(error){
-    const msg=String(error.message||'');
+    lastExternalGpsError=String(error.message||'Erro ao enviar localização.');
+    renderExternalGpsDiagnostics();
+    const msg=lastExternalGpsError;
     if(msg.includes('shift_not_active') || msg.includes('external_location_not_enabled')){
       stopExternalLocationTracking();
     }
+    throw error;
   }
+
+  lastExternalGpsSentAt=Date.now();
+  lastExternalGpsError=null;
+  renderExternalGpsDiagnostics();
 }
 
 function stopExternalLocationTracking(){
@@ -227,6 +307,7 @@ function stopExternalLocationTracking(){
     navigator.geolocation.clearWatch(externalLocationWatchId);
   }
   externalLocationWatchId=null;
+  renderExternalGpsDiagnostics();
 }
 
 function startExternalLocationTracking(forceRestart=false){
@@ -243,13 +324,22 @@ function startExternalLocationTracking(forceRestart=false){
 
   externalLocationWatchId=navigator.geolocation.watchPosition(
     pos=>sendExternalLocationPosition(pos).catch(()=>{}),
-    ()=>{},
+    err=>{
+      const msgs={
+        1:'Permissão de localização negada.',
+        2:'Sinal de localização indisponível.',
+        3:'GPS demorou demais para responder.'
+      };
+      lastExternalGpsError=msgs[err.code]||'Erro no rastreamento de localização.';
+      renderExternalGpsDiagnostics();
+    },
     {
       enableHighAccuracy:true,
       maximumAge:0,
       timeout:15000
     }
   );
+  renderExternalGpsDiagnostics();
 }
 
 function resumeExternalLocationTracking(){
