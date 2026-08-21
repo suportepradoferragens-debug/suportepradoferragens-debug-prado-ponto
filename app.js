@@ -34,7 +34,7 @@ function renderOwnAvatar(){
     $('avatar').innerHTML=`<img src="${esc(me.avatar_url)}" alt="Sua foto" referrerpolicy="no-referrer">`;
     $('avatar').classList.add('has-photo');
   }else{
-    $('avatar').textContent=initials(me.full_name);
+    renderOwnAvatar();
     $('avatar').classList.remove('has-photo');
   }
 }
@@ -146,7 +146,7 @@ async function loadProfile(){
   if(error||!data) throw new Error('Seu login ainda não está vinculado a um funcionário ativo.');
 
   const googleAvatar=user.user_metadata?.avatar_url||user.user_metadata?.picture||null;
-  if(googleAvatar && googleAvatar!==data.avatar_url){
+  if(googleAvatar && !data.avatar_url){
     const sync=await client.rpc('sync_my_avatar',{p_avatar_url:googleAvatar});
     if(!sync.error){
       data.avatar_url=googleAvatar;
