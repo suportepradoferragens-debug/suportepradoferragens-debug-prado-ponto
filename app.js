@@ -1624,6 +1624,7 @@ function isoDateInputValue(d){
 
 function initMirrorPeriod(){
   if(!$('mirrorStartDate')||!$('mirrorEndDate')) return;
+  if($('mirrorStartDate').value && $('mirrorEndDate').value) return;
   const now=new Date();
   const first=new Date(now.getFullYear(),now.getMonth(),1);
   $('mirrorStartDate').value=isoDateInputValue(first);
@@ -1644,7 +1645,15 @@ async function loadMyMirror(){
     $('mirrorList').innerHTML='<div class="overtime-empty">Informe a data inicial e final.</div>';
     return;
   }
+  if(start>end){
+    $('mirrorList').innerHTML='<div class="overtime-empty">A data inicial não pode ser maior que a data final.</div>';
+    return;
+  }
 
+  currentMirrorRows=[];
+  $('mirrorDaysTotal').textContent='0';
+  $('mirrorWorkedTotal').textContent='0 min';
+  $('mirrorOvertimeTotal').textContent='0 min';
   $('mirrorList').innerHTML='<div class="overtime-empty">Carregando espelho...</div>';
 
   const from=new Date(start+'T00:00:00-03:00');
@@ -1667,7 +1676,8 @@ async function loadMyMirror(){
   ]);
 
   if(eventError||scheduleError||ruleError){
-    $('mirrorList').innerHTML='<div class="overtime-empty">Não foi possível carregar o espelho agora.</div>';
+    console.error('employee_mirror_load_error',{eventError,scheduleError,ruleError});
+    $('mirrorList').innerHTML='<div class="overtime-empty">Não foi possível carregar o espelho agora. Tente novamente em alguns segundos.</div>';
     return;
   }
 
@@ -1746,12 +1756,10 @@ async function loadMyMirror(){
 }
 
 async function downloadMyMirrorPdf(){
+  await loadMyMirror();
   if(!currentMirrorRows.length){
-    await loadMyMirror();
-    if(!currentMirrorRows.length){
-      alert('Não há registros neste período.');
-      return;
-    }
+    alert('Não há registros neste período.');
+    return;
   }
 
   if(!window.jspdf?.jsPDF){
@@ -1821,11 +1829,14 @@ function openView(id){
   const map={
     employeeHome:['Meu ponto','Registro da minha jornada'],
     employeeHistory:['Meu histórico','Meus registros de ponto'],
+    employeeMirror:['Espelho do ponto','Baixar meu espelho de ponto'],
     managerHome:['Painel do gestor','Visão geral da equipe'],
     employees:['Funcionários','Cadastro e acesso da equipe'],
     managerRecords:['Registros','Histórico de pontos da equipe']
   };
-  $('pageTitle').textContent=map[id][0];$('pageSubtitle').textContent=map[id][1];
+  const pageMeta=map[id]||['Prado Ponto',''];
+  $('pageTitle').textContent=pageMeta[0];
+  $('pageSubtitle').textContent=pageMeta[1];
   if(id==='employeeHistory')loadMyHistory();
   if(id==='employeeMirror'){
     initMirrorPeriod();
