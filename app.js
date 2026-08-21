@@ -29,13 +29,30 @@ function avatarHtml(person,sizeClass=''){
 }
 
 function renderOwnAvatar(){
-  if(!$('avatar')||!me) return;
+  if(!me) return;
+
+  const top=$('avatar');
+  const self=$('employeeSelfPhotoBtn');
+
   if(me.avatar_url){
-    $('avatar').innerHTML=`<img src="${esc(me.avatar_url)}" alt="Sua foto" referrerpolicy="no-referrer">`;
-    $('avatar').classList.add('has-photo');
+    if(top){
+      top.innerHTML=`<img src="${esc(me.avatar_url)}" alt="Sua foto" referrerpolicy="no-referrer">`;
+      top.classList.add('has-photo');
+    }
+    if(self){
+      self.innerHTML=`<img src="${esc(me.avatar_url)}" alt="Sua foto" referrerpolicy="no-referrer">`;
+      self.classList.add('has-photo');
+    }
   }else{
-    $('avatar').textContent=initials(me.full_name);
-    $('avatar').classList.remove('has-photo');
+    const letters=initials(me.full_name);
+    if(top){
+      top.textContent=letters;
+      top.classList.remove('has-photo');
+    }
+    if(self){
+      self.innerHTML=`<span id="employeeSelfPhotoFallback">${esc(letters)}</span>`;
+      self.classList.remove('has-photo');
+    }
   }
 }
 
@@ -488,7 +505,7 @@ async function loadEmployees(){
   const rows=data||[];
   employeeDirectory=rows;
   $('employeesBody').innerHTML=rows.map(e=>`<tr>
-    <td>${esc(e.full_name)}</td><td>${esc(e.email||'—')}</td>
+    <td><div class="manager-table-person">${avatarHtml(e,'manager-table-avatar')}<span>${esc(e.full_name)}</span></div></td><td>${esc(e.email||'—')}</td>
     <td>${e.role==='admin'?'Administrador':e.role==='manager'?'Gestor':'Funcionário'}</td>
     <td>${e.user_id?'Criado':'Pendente'}</td>
     <td><span class="badge ${e.active?'good':'neutral'}">${e.active?'Ativo':'Inativo'}</span></td>
@@ -913,7 +930,7 @@ function renderManagerEmployeeRows(rows){
     </article>`);
 
     tableRows.push(`<tr>
-      <td>${isExternal?externalWorkerIcon():''}${esc(emp.full_name)}</td>
+      <td><div class="manager-table-person">${avatarHtml(emp,'manager-table-avatar')}<span>${isExternal?externalWorkerIcon():''}${esc(emp.full_name)}</span></div></td>
       <td>${ins.length?fmtTime(ins[0].occurred_at):'—'}</td>
       <td>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</td>
       <td>${formatMinutes(overtimeMinutes)}</td>
@@ -1178,7 +1195,7 @@ async function boot(){
     sessionStorage.removeItem('pradoInviteEmail');
     history.replaceState({},'',location.pathname);
     showApp();
-    if(!isManager()){await loadToday();await loadMySchedule();await loadEmployeePlannedShift();updateEmployeeMobileUI()}
+    if(!isManager()){renderOwnAvatar();await loadToday();await loadMySchedule();await loadEmployeePlannedShift();updateEmployeeMobileUI()}
   }catch(e){
     console.error('boot_profile_error',e);
     showAuth();
@@ -1199,6 +1216,7 @@ if($('setBranchLocationBtn')) $('setBranchLocationBtn').onclick=setBranchLocatio
 if($('checkPresenceNowBtn')) $('checkPresenceNowBtn').onclick=()=>checkWebPresence(true);
 
 if($('changeOwnAvatarBtn')) $('changeOwnAvatarBtn').onclick=()=>pickEmployeeAvatar(me.id,true);
+if($('employeeSelfPhotoBtn')) $('employeeSelfPhotoBtn').onclick=()=>pickEmployeeAvatar(me.id,true);
 if($('employeeMainPunchBtn')) $('employeeMainPunchBtn').onclick=()=>{
   const inside=todayEvents.length>0&&todayEvents[todayEvents.length-1].event_type==='check_in';
   saveEvent(inside?'check_out':'check_in');

@@ -396,3 +396,58 @@
 @media (min-width:821px){
   .employee-photo-btn{display:none}
 }
+
+/* Visible employee/admin avatars */
+.employee-profile-block{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  min-width:0;
+}
+.employee-self-photo{
+  width:68px;
+  height:68px;
+  flex:0 0 68px;
+  border-radius:50%;
+  overflow:hidden;
+  border:2px solid rgba(255,255,255,.7);
+  background:rgba(255,255,255,.14);
+  color:#fff;
+  display:grid;
+  place-items:center;
+  font-size:21px;
+  font-weight:900;
+  padding:0;
+  box-shadow:0 10px 24px rgba(0,0,0,.16);
+}
+.employee-self-photo img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.employee-self-photo.has-photo{
+  background:#fff;
+}
+.manager-table-person{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+.manager-table-person > span:last-child{
+  min-width:0;
+}
+.manager-table-avatar{
+  width:34px;
+  height:34px;
+  flex:0 0 34px;
+}
+@media (max-width:480px){
+  .employee-profile-block{align-items:flex-start}
+  .employee-self-photo{
+    width:62px;
+    height:62px;
+    flex-basis:62px;
+  }
+}
