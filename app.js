@@ -283,15 +283,6 @@ async function createEmployee(){
 
 
 
-function updateBreakFields(){
-  const hasBreak=$('scheduleHasBreak')?.checked ?? true;
-  document.querySelectorAll('.break-field').forEach(el=>{
-    el.style.opacity=hasBreak?'1':'.45';
-    const input=el.querySelector('input');
-    if(input) input.disabled=!hasBreak;
-  });
-}
-
 async function loadMySchedule(){
   const {data,error}=await client.from('work_schedules').select('weekday,start_time,break_start,break_end,end_time,tolerance_minutes').eq('employee_id',me.id).order('weekday');
   if(error||!(data||[]).length){$('mySchedule').innerHTML='<span class="muted">Nenhum horário definido ainda.</span>';return}
@@ -304,16 +295,34 @@ async function loadMySchedule(){
   }).join('');
 }
 
-async function loadSchedulePreview(){
-  const employeeId=$('scheduleEmployee').value;
-  if(!employeeId){$('schedulePreview').innerHTML='';return}
-  const {data,error}=await client.from('work_schedules').select('weekday,start_time,break_start,break_end,end_time,tolerance_minutes').eq('employee_id',employeeId).order('weekday');
-  if(error){$('schedulePreview').textContent=error.message;return}
-  if((data||[]).length && $('scheduleHasBreak')){
-    const first=data[0];
-    $('scheduleHasBreak').checked=!!(first.break_start&&first.break_end);
-    updateBreakFields();
+
+function updateDayRowState(row){
+  const enabled=row.querySelector('.workDay').checked;
+  row.querySelectorAll('input:not(.workDay)').forEach(input=>input.disabled=!enabled);
+  row.style.opacity=enabled?'1':'.48';
+}
+
+function setDayRow(row, schedule=null, keepDefaults=false){
+  const work=row.querySelector('.workDay');
+  if(schedule){
+    work.checked=true;
+    row.querySelector('.dayStart').value=schedule.start_time?.slice(0,5)||'';
+    row.querySelector('.dayBreakStart').value=schedule.break_start?.slice(0,5)||'';
+    row.querySelector('.dayBreakEnd').value=schedule.break_end?.slice(0,5)||'';
+    row.querySelector('.dayEnd').value=schedule.end_time?.slice(0,5)||'';
+    row.querySelector('.dayTolerance').value=schedule.tolerance_minutes ?? 5;
+  }else if(!keepDefaults){
+    work.checked=false;
+    row.querySelector('.dayStart').value='';
+    row.querySelector('.dayBreakStart').value='';
+    row.querySelector('.dayBreakEnd').value='';
+    row.querySelector('.dayEnd').value='';
+    row.querySelector('.dayTolerance').value=5;
   }
+  updateDayRowState(row);
+}
+
+function renderSchedulePreview(data){
   $('schedulePreview').innerHTML=(data||[]).length?(data||[]).map(s=>{
     const hasBreak=!!(s.break_start&&s.break_end);
     const hours=hasBreak
@@ -323,37 +332,76 @@ async function loadSchedulePreview(){
   }).join(''):'<span class="muted">Nenhum horário definido para este funcionário.</span>';
 }
 
+async function loadSchedulePreview(){
+  const employeeId=$('scheduleEmployee').value;
+  if(!employeeId){$('schedulePreview').innerHTML='';return}
+
+  const {data,error}=await client.from('work_schedules')
+    .select('weekday,start_time,break_start,break_end,end_time,tolerance_minutes')
+    .eq('employee_id',employeeId).order('weekday');
+
+  if(error){$('schedulePreview').textContent=error.message;return}
+
+  const saved=(data||[]);
+  const byDay=new Map(saved.map(s=>[Number(s.weekday),s]));
+  document.querySelectorAll('.day-schedule-row').forEach(row=>{
+    const weekday=Number(row.dataset.weekday);
+    setDayRow(row,byDay.get(weekday)||null,saved.length===0);
+  });
+  renderSchedulePreview(saved);
+  $('scheduleMsg').textContent='Edite cada dia individualmente e clique em Salvar jornada semanal.';
+}
+
 async function saveSchedule(){
   const employeeId=$('scheduleEmployee').value;
-  const days=[...document.querySelectorAll('.dayCheck:checked')].map(x=>Number(x.value));
   if(!employeeId){$('scheduleMsg').textContent='Selecione um funcionário.';return}
-  if(!days.length){$('scheduleMsg').textContent='Selecione pelo menos um dia.';return}
-  const hasBreak=$('scheduleHasBreak')?.checked ?? true;
-  const rows=days.map(weekday=>({
-    employee_id:employeeId,
-    weekday,
-    start_time:$('scheduleStart').value||null,
-    break_start:hasBreak?($('scheduleBreakStart').value||null):null,
-    break_end:hasBreak?($('scheduleBreakEnd').value||null):null,
-    end_time:$('scheduleEnd').value||null,
-    tolerance_minutes:Number($('scheduleTolerance').value||5)
-  }));
-  $('scheduleMsg').textContent='Salvando horários...';
-  const {error}=await client.from('work_schedules').upsert(rows,{onConflict:'employee_id,weekday'});
-  if(error){$('scheduleMsg').textContent='Erro: '+error.message;return}
-  $('scheduleMsg').textContent='Horários salvos com sucesso.';
+
+  const activeRows=[];
+  const inactiveDays=[];
+
+  for(const row of document.querySelectorAll('.day-schedule-row')){
+    const weekday=Number(row.dataset.weekday);
+    const enabled=row.querySelector('.workDay').checked;
+    if(!enabled){inactiveDays.push(weekday);continue}
+
+    const start=row.querySelector('.dayStart').value||null;
+    const breakStart=row.querySelector('.dayBreakStart').value||null;
+    const breakEnd=row.querySelector('.dayBreakEnd').value||null;
+    const end=row.querySelector('.dayEnd').value||null;
+    const tolerance=Number(row.querySelector('.dayTolerance').value||5);
+
+    if(!start||!end){$('scheduleMsg').textContent=`Preencha entrada e saída de ${dayNames[weekday]}.`;return}
+    if((breakStart&&!breakEnd)||(!breakStart&&breakEnd)){
+      $('scheduleMsg').textContent=`Preencha início e retorno do intervalo de ${dayNames[weekday]}, ou deixe os dois vazios.`;
+      return;
+    }
+
+    activeRows.push({
+      employee_id:employeeId,weekday,start_time:start,
+      break_start:breakStart,break_end:breakEnd,end_time:end,
+      tolerance_minutes:tolerance
+    });
+  }
+
+  $('scheduleMsg').textContent='Salvando jornada semanal...';
+
+  if(inactiveDays.length){
+    const del=await client.from('work_schedules').delete().eq('employee_id',employeeId).in('weekday',inactiveDays);
+    if(del.error){$('scheduleMsg').textContent='Erro: '+del.error.message;return}
+  }
+
+  if(activeRows.length){
+    const up=await client.from('work_schedules').upsert(activeRows,{onConflict:'employee_id,weekday'});
+    if(up.error){$('scheduleMsg').textContent='Erro: '+up.error.message;return}
+  }
+
+  $('scheduleMsg').textContent='Jornada semanal salva com sucesso.';
   await loadSchedulePreview();
 }
 
-async function clearSchedule(){
-  const employeeId=$('scheduleEmployee').value;
-  const days=[...document.querySelectorAll('.dayCheck:checked')].map(x=>Number(x.value));
-  if(!employeeId||!days.length){$('scheduleMsg').textContent='Selecione funcionário e dias.';return}
-  if(!confirm('Remover os horários dos dias selecionados?')) return;
-  const {error}=await client.from('work_schedules').delete().eq('employee_id',employeeId).in('weekday',days);
-  $('scheduleMsg').textContent=error?'Erro: '+error.message:'Horários removidos.';
-  if(!error) await loadSchedulePreview();
-}
+document.querySelectorAll('.day-schedule-row .workDay').forEach(chk=>{
+  chk.addEventListener('change',()=>updateDayRowState(chk.closest('.day-schedule-row')));
+});
 
 async function loadManagerHome(){
   const [{data:emps},{data:events},{data:presence}]=await Promise.all([
@@ -470,12 +518,7 @@ if($('checkPresenceNowBtn')) $('checkPresenceNowBtn').onclick=()=>checkWebPresen
 $('createEmployeeBtn').onclick=createEmployee;
 $('refreshEmployees').onclick=loadEmployees;
 $('scheduleEmployee').onchange=loadSchedulePreview;
-if($('scheduleHasBreak')){
-  $('scheduleHasBreak').onchange=updateBreakFields;
-  updateBreakFields();
-}
 $('saveScheduleBtn').onclick=saveSchedule;
-$('clearScheduleBtn').onclick=clearSchedule;
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
 client.auth.onAuthStateChange((e)=>{if(e==='SIGNED_OUT')showAuth()});
 client.channel('manager-presence-live')

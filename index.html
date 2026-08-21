@@ -165,31 +165,76 @@
             <label>Funcionário
               <select id="scheduleEmployee"><option value="">Selecione...</option></select>
             </label>
-            <div class="days">
-              <label><input type="checkbox" class="dayCheck" value="1" checked> Seg</label>
-              <label><input type="checkbox" class="dayCheck" value="2" checked> Ter</label>
-              <label><input type="checkbox" class="dayCheck" value="3" checked> Qua</label>
-              <label><input type="checkbox" class="dayCheck" value="4" checked> Qui</label>
-              <label><input type="checkbox" class="dayCheck" value="5" checked> Sex</label>
-              <label><input type="checkbox" class="dayCheck" value="6"> Sáb</label>
-              <label><input type="checkbox" class="dayCheck" value="0"> Dom</label>
+
+            <p class="privacy">Defina os horários individualmente por dia. Assim o sábado pode ter uma jornada menor sem alterar segunda a sexta.</p>
+
+            <div id="dayScheduleEditor" class="day-schedule-editor">
+              <div class="day-schedule-head">
+                <span>Dia</span><span>Trabalha</span><span>Entrada</span><span>Intervalo</span><span>Retorno</span><span>Saída</span><span>Tolerância</span>
+              </div>
+
+              <div class="day-schedule-row" data-weekday="1">
+                <strong>Segunda</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="12:00">
+                <input class="dayBreakEnd" type="time" value="13:00">
+                <input class="dayEnd" type="time" value="17:48">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row" data-weekday="2">
+                <strong>Terça</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="12:00">
+                <input class="dayBreakEnd" type="time" value="13:00">
+                <input class="dayEnd" type="time" value="17:48">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row" data-weekday="3">
+                <strong>Quarta</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="12:00">
+                <input class="dayBreakEnd" type="time" value="13:00">
+                <input class="dayEnd" type="time" value="17:48">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row" data-weekday="4">
+                <strong>Quinta</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="12:00">
+                <input class="dayBreakEnd" type="time" value="13:00">
+                <input class="dayEnd" type="time" value="17:48">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row" data-weekday="5">
+                <strong>Sexta</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="12:00">
+                <input class="dayBreakEnd" type="time" value="13:00">
+                <input class="dayEnd" type="time" value="17:48">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row saturday-row" data-weekday="6">
+                <strong>Sábado</strong><input class="workDay" type="checkbox" checked>
+                <input class="dayStart" type="time" value="08:00">
+                <input class="dayBreakStart" type="time" value="">
+                <input class="dayBreakEnd" type="time" value="">
+                <input class="dayEnd" type="time" value="12:00">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
+              <div class="day-schedule-row" data-weekday="0">
+                <strong>Domingo</strong><input class="workDay" type="checkbox">
+                <input class="dayStart" type="time" value="">
+                <input class="dayBreakStart" type="time" value="">
+                <input class="dayBreakEnd" type="time" value="">
+                <input class="dayEnd" type="time" value="">
+                <input class="dayTolerance" type="number" min="0" max="120" value="5">
+              </div>
             </div>
-            <label style="display:flex;align-items:center;gap:10px;margin:12px 0">
-              <input id="scheduleHasBreak" type="checkbox" checked style="width:auto">
-              <span><strong>Possui intervalo/almoço</strong><br><small>Desmarque para jornada sem intervalo.</small></span>
-            </label>
-            <div class="time-grid">
-              <label>Entrada<input id="scheduleStart" type="time" value="08:00"></label>
-              <label class="break-field">Início intervalo<input id="scheduleBreakStart" type="time" value="12:00"></label>
-              <label class="break-field">Retorno<input id="scheduleBreakEnd" type="time" value="13:00"></label>
-              <label>Saída<input id="scheduleEnd" type="time" value="17:48"></label>
-              <label>Tolerância (min)<input id="scheduleTolerance" type="number" min="0" max="120" value="5"></label>
-            </div>
+
             <div class="actions">
-              <button id="saveScheduleBtn" class="primary">Salvar horários</button>
-              <button id="clearScheduleBtn" class="ghost">Remover horários selecionados</button>
+              <button id="saveScheduleBtn" class="primary">Salvar jornada semanal</button>
             </div>
-            <p id="scheduleMsg" class="privacy">Selecione o funcionário e os dias que deseja configurar.</p>
+            <p id="scheduleMsg" class="privacy">Selecione um funcionário para carregar os horários.</p>
             <div id="schedulePreview" class="schedule-summary"></div>
           </div>
         </article>
