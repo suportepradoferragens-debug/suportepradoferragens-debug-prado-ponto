@@ -21,3 +21,45 @@
 .rule-toggle input{width:auto;margin-top:4px}
 .rule-toggle span{display:block}
 .rule-toggle small{opacity:.68;line-height:1.45}
+
+.external-worker-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:24px;
+  height:24px;
+  margin-right:8px;
+  border-radius:8px;
+  vertical-align:middle;
+  background:rgba(18,59,42,.10);
+  color:#123b2a;
+}
+.external-worker-icon svg{display:block}
+
+.thanks-banner{
+  display:flex;
+  align-items:flex-start;
+  gap:14px;
+  padding:18px 20px;
+  margin-bottom:16px;
+  border-radius:18px;
+  background:rgba(18,59,42,.08);
+  border:1px solid rgba(18,59,42,.16);
+}
+.thanks-banner.hidden{display:none}
+.thanks-banner strong{display:block;font-size:18px;margin-bottom:4px}
+.thanks-banner p{margin:0;line-height:1.5;opacity:.78}
+.thanks-icon{
+  width:36px;height:36px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  background:#123b2a;color:#fff;font-weight:800;flex:0 0 auto
+}
+.thanks-close{
+  margin-left:auto;
+  border:0;
+  background:transparent;
+  font-size:24px;
+  line-height:1;
+  cursor:pointer;
+  opacity:.55
+}

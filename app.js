@@ -68,6 +68,8 @@ async function loadProfile(){
     $('employeeNav').classList.remove('hidden');
     openView('employeeHome');
     setTimeout(()=>checkWebPresence(false),500);
+    setTimeout(()=>checkEndShiftThanks(),1200);
+    setTimeout(()=>requestNotificationPermission(),2500);
   }
 }
 
@@ -491,11 +493,19 @@ async function loadManagerHome(){
     const otLabel=overtimeMinutes>0
       ?`<br><small><strong>Hora extra: ${overtimeMinutes} min</strong>${lunchExtra>0?` • almoço ${lunchExtra} min`:''}</small>`
       :'';
-    const statusLabel=emp.allow_external_after_checkin&&onShift&&!p?.geofence_verified
+    const isExternal=!!emp.allow_external_after_checkin;
+    const statusLabel=isExternal&&onShift&&!p?.geofence_verified
       ?'Em serviço externo'
       :(onShift?'Na empresa':'Fora da empresa');
+    const externalIcon=isExternal
+      ?`<span class="external-worker-icon" title="Funcionário autorizado para serviço externo" aria-label="Serviço externo">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+            <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7zM6.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm11 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" fill="currentColor"/>
+          </svg>
+        </span>`
+      :'';
     return `<tr>
-      <td>${esc(emp.full_name)}</td>
+      <td>${externalIcon}${esc(emp.full_name)}</td>
       <td>${ins.length?fmtTime(ins[0].occurred_at):'—'}</td>
       <td>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</td>
       <td><span class="badge ${onShift?'good':'neutral'}">${statusLabel}</span><br><small>${evidence} • ${lastSeen}</small>${otLabel}</td>
@@ -514,6 +524,52 @@ async function loadManagerRecords(){
   if(error)return;
   const names=new Map((emps||[]).map(e=>[e.id,e.full_name]));
   $('recordsBody').innerHTML=(events||[]).map(e=>`<tr><td>${names.get(e.employee_id)||'Funcionário'}</td><td>${fmtDate(e.occurred_at)}</td><td>${fmtTime(e.occurred_at)}</td><td>${e.event_type==='check_in'?'Entrada':'Saída'}${e.automatic?'<br><small>Automático</small>':''}${e.receipt_code?`<br><small>${e.receipt_code}</small>`:''}</td><td>${e.wifi_verified?'Wi‑Fi':e.geofence_verified?'Localização':'Não'}</td></tr>`).join('');
+}
+
+
+function parseTimeToToday(value){
+  if(!value) return null;
+  const [h,m]=value.slice(0,5).split(':').map(Number);
+  const d=new Date();
+  d.setHours(h,m,0,0);
+  return d;
+}
+
+async function checkEndShiftThanks(){
+  if(!me || isManager() || !$('endShiftThanks')) return;
+
+  const now=new Date();
+  const weekday=now.getDay();
+  const {data,error}=await client.from('work_schedules')
+    .select('end_time')
+    .eq('employee_id',me.id)
+    .eq('weekday',weekday)
+    .maybeSingle();
+
+  if(error || !data?.end_time) return;
+
+  const end=parseTimeToToday(data.end_time);
+  if(!end || now<end) return;
+
+  const key=`prado-thanks-${me.id}-${now.toISOString().slice(0,10)}`;
+  if(localStorage.getItem(key)==='1') return;
+
+  $('endShiftThanks').classList.remove('hidden');
+  localStorage.setItem(key,'1');
+
+  if('Notification' in window && Notification.permission==='granted'){
+    try{
+      new Notification('Jornada concluída', {
+        body:'Obrigado pelo seu esforço e comprometimento hoje. Seu trabalho faz a diferença.',
+        icon:'/icon-180.png'
+      });
+    }catch{}
+  }
+}
+
+async function requestNotificationPermission(){
+  if(!('Notification' in window) || Notification.permission!=='default') return;
+  try{ await Notification.requestPermission(); }catch{}
 }
 
 function openView(id){
@@ -593,6 +649,8 @@ $('scheduleEmployee').onchange=loadSchedulePreview;
 $('saveScheduleBtn').onclick=saveSchedule;
 if($('ruleEmployee')) $('ruleEmployee').onchange=loadEmployeeRules;
 if($('saveEmployeeRulesBtn')) $('saveEmployeeRulesBtn').onclick=saveEmployeeRules;
+if($('closeThanksBtn')) $('closeThanksBtn').onclick=()=>$('endShiftThanks').classList.add('hidden');
+setInterval(()=>{ if(me&&!isManager()) checkEndShiftThanks(); },60000);
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
 client.auth.onAuthStateChange((e)=>{if(e==='SIGNED_OUT')showAuth()});
 client.channel('manager-presence-live')
@@ -608,7 +666,10 @@ if(inviteEmail){
   setAuthMsg('Convite reconhecido. Toque em Continuar com Google.');
 }
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible'&&me&&!isManager()) checkWebPresence(false);
+  if(document.visibilityState==='visible'&&me&&!isManager()){
+    checkWebPresence(false);
+    checkEndShiftThanks();
+  }
 });
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
