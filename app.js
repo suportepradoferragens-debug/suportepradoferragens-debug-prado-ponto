@@ -53,6 +53,7 @@ async function loadProfile(){
   me=data;
   const {data:b}=await client.from('branches').select('id,name,address,latitude,longitude,geofence_radius_m').eq('id',me.branch_id).single();
   branch=b||null;
+  renderBranchLocation();
   $('userName').textContent=me.full_name;
   $('userBranch').textContent=branch?.name||'Unidade';
   $('avatar').textContent=initials(me.full_name);
@@ -67,6 +68,61 @@ async function loadProfile(){
     $('employeeNav').classList.remove('hidden');
     openView('employeeHome');
   }
+}
+
+
+function renderBranchLocation(){
+  if(!$('branchLocationStatus')) return;
+  const configured=branch?.latitude!=null&&branch?.longitude!=null;
+  $('branchLocationStatus').textContent=configured?'Configurado':'Não configurado';
+  $('branchLat').textContent=configured?Number(branch.latitude).toFixed(6):'—';
+  $('branchLng').textContent=configured?Number(branch.longitude).toFixed(6):'—';
+  $('branchRadius').textContent=(branch?.geofence_radius_m||80)+' m';
+  $('branchLocationMsg').textContent=configured
+    ?'Centro do geofence salvo. Para alterar, esteja novamente na unidade e use o botão acima.'
+    :'A localização ainda não foi definida.';
+}
+
+async function setBranchLocation(){
+  if(!isManager()) return;
+  if(!navigator.geolocation){
+    $('branchLocationMsg').textContent='Este navegador não oferece geolocalização.';
+    return;
+  }
+  const btn=$('setBranchLocationBtn');
+  btn.disabled=true;
+  $('branchLocationMsg').textContent='Obtendo localização precisa do aparelho...';
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    const latitude=pos.coords.latitude;
+    const longitude=pos.coords.longitude;
+    const accuracy=pos.coords.accuracy;
+    if(accuracy>100){
+      btn.disabled=false;
+      $('branchLocationMsg').textContent='Precisão insuficiente ('+Math.round(accuracy)+' m). Ative a localização precisa e tente novamente.';
+      return;
+    }
+    const {data,error}=await client.from('branches')
+      .update({latitude,longitude,geofence_radius_m:80})
+      .eq('id',me.branch_id)
+      .select('id,name,address,latitude,longitude,geofence_radius_m')
+      .single();
+    btn.disabled=false;
+    if(error){
+      $('branchLocationMsg').textContent='Erro ao salvar: '+error.message;
+      return;
+    }
+    branch=data;
+    renderBranchLocation();
+    $('branchLocationMsg').textContent='Localização salva com precisão aproximada de '+Math.round(accuracy)+' m.';
+  },err=>{
+    btn.disabled=false;
+    const msgs={
+      1:'Permissão de localização negada. Libere o acesso à localização para este site e tente novamente.',
+      2:'Não foi possível determinar a localização do aparelho.',
+      3:'A localização demorou demais. Tente novamente em um local com melhor sinal.'
+    };
+    $('branchLocationMsg').textContent=msgs[err.code]||'Erro ao obter localização.';
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
 }
 
 async function loadToday(){
@@ -295,6 +351,7 @@ $('logoutBtn').onclick=async()=>{await client.auth.signOut();location.reload()};
 $('checkInBtn').onclick=()=>saveEvent('check_in');
 $('checkOutBtn').onclick=()=>saveEvent('check_out');
 $('useLocation').onclick=verifyLocation;
+if($('setBranchLocationBtn')) $('setBranchLocationBtn').onclick=setBranchLocation;
 $('createEmployeeBtn').onclick=createEmployee;
 $('refreshEmployees').onclick=loadEmployees;
 $('scheduleEmployee').onchange=loadSchedulePreview;

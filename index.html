@@ -79,6 +79,22 @@
       </section>
 
       <section id="managerHome" class="view">
+        <article class="card table-card">
+          <div class="card-head">
+            <div><span class="eyebrow">LOCALIZAÇÃO DA UNIDADE</span><h3>Geofence do ponto</h3></div>
+            <span class="pill" id="branchLocationStatus">Não configurado</span>
+          </div>
+          <p class="privacy">Este aparelho deve estar fisicamente na unidade. Ao salvar, o sistema usará esta posição como centro da área permitida para o ponto.</p>
+          <div class="actions">
+            <button id="setBranchLocationBtn" class="primary">Definir localização da unidade neste aparelho</button>
+          </div>
+          <div class="grid three">
+            <article class="card"><span>Raio permitido</span><strong id="branchRadius">80 m</strong><small>Geofence</small></article>
+            <article class="card"><span>Latitude</span><strong id="branchLat">—</strong><small>Unidade</small></article>
+            <article class="card"><span>Longitude</span><strong id="branchLng">—</strong><small>Unidade</small></article>
+          </div>
+          <p class="privacy" id="branchLocationMsg">A localização ainda não foi definida.</p>
+        </article>
         <div class="grid three">
           <article class="card"><span>Funcionários ativos</span><strong id="employeeTotal">0</strong><small>Equipe</small></article>
           <article class="card"><span>Presentes agora</span><strong id="presentTotal">0</strong><small>Entrada sem saída</small></article>
