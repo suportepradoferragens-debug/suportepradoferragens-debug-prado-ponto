@@ -245,16 +245,29 @@ async function boot(){
   }
 }
 
-$('googleLoginBtn').onclick=async()=>{
+$('googleLoginBtn').addEventListener('click', async (ev)=>{
+  ev.preventDefault();
+  const btn=$('googleLoginBtn');
+  btn.disabled=true;
   setAuthMsg('Abrindo o Google...');
   const inviteEmail=new URLSearchParams(location.search).get('email');
   if(inviteEmail) sessionStorage.setItem('pradoInviteEmail',inviteEmail.toLowerCase());
-  const {error}=await client.auth.signInWithOAuth({
-    provider:'google',
-    options:{redirectTo:window.location.origin}
-  });
-  if(error)setAuthMsg('Não foi possível iniciar o login com Google: '+error.message,true);
-};
+  try{
+    const {data,error}=await client.auth.signInWithOAuth({
+      provider:'google',
+      options:{
+        redirectTo:window.location.origin,
+        skipBrowserRedirect:true
+      }
+    });
+    if(error) throw error;
+    if(!data?.url) throw new Error('O Supabase não retornou a URL de login do Google.');
+    window.location.assign(data.url);
+  }catch(err){
+    btn.disabled=false;
+    setAuthMsg('Não foi possível abrir o Google: '+(err?.message||'erro desconhecido'),true);
+  }
+});
 $('logoutBtn').onclick=async()=>{await client.auth.signOut();location.reload()};
 $('checkInBtn').onclick=()=>saveEvent('check_in');
 $('checkOutBtn').onclick=()=>saveEvent('check_out');
