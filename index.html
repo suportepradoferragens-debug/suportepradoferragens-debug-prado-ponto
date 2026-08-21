@@ -208,7 +208,10 @@
             <h2>Bom dia</h2>
             <p>Acompanhe a equipe de hoje.</p>
           </div>
-          <button id="mobileRefreshBtn" class="mobile-icon-btn" aria-label="Atualizar">↻</button>
+          <div class="manager-hero-actions">
+            <button id="enableManagerNotificationsBtn" class="manager-notify-btn" type="button">Ativar notificações</button>
+            <button id="mobileRefreshBtn" class="mobile-icon-btn" aria-label="Atualizar">↻</button>
+          </div>
         </div>
 
         <section class="attention-panel">
@@ -242,7 +245,10 @@
             <h2>Equipe em tempo real</h2>
             <p class="privacy">Jornada, hora extra e última localização informada durante o trabalho.</p>
           </div>
-          <button id="refreshManagerDashboard" class="ghost">Atualizar</button>
+          <div class="manager-header-actions">
+            <button id="enableManagerNotificationsDesktopBtn" class="ghost">Ativar notificações</button>
+            <button id="refreshManagerDashboard" class="ghost">Atualizar</button>
+          </div>
         </div>
 
         <div class="grid four manager-kpis">
@@ -516,6 +522,43 @@
       </section>
     </main>
   </div>
+
+
+<div id="managerPunchToast" class="manager-punch-toast hidden" role="status" aria-live="polite">
+  <div class="manager-punch-toast-icon">✓</div>
+  <div>
+    <strong id="managerPunchToastTitle">Ponto registrado</strong>
+    <span id="managerPunchToastText">Funcionário registrou ponto.</span>
+  </div>
+</div>
+
+<div id="dailyReceiptModal" class="daily-receipt-modal hidden">
+  <div class="daily-receipt-backdrop" data-close-daily-receipt></div>
+  <article class="daily-receipt-sheet">
+    <div class="daily-receipt-head">
+      <div>
+        <span class="eyebrow">COMPROVANTE DE JORNADA</span>
+        <h3>Expediente concluído</h3>
+      </div>
+      <button class="thanks-close" data-close-daily-receipt aria-label="Fechar">×</button>
+    </div>
+    <div class="daily-receipt-brand">Prado Ponto</div>
+    <div id="dailyReceiptEmployee" class="daily-receipt-employee"></div>
+    <div class="daily-receipt-grid">
+      <div><span>Data</span><strong id="dailyReceiptDate">—</strong></div>
+      <div><span>Entrada</span><strong id="dailyReceiptIn">—</strong></div>
+      <div><span>Saída</span><strong id="dailyReceiptOut">—</strong></div>
+      <div><span>Tempo trabalhado</span><strong id="dailyReceiptWorked">—</strong></div>
+      <div><span>Hora extra</span><strong id="dailyReceiptOvertime">—</strong></div>
+      <div><span>Código</span><strong id="dailyReceiptCode">—</strong></div>
+    </div>
+    <p class="daily-receipt-note">Este comprovante foi gerado automaticamente pelo servidor após o registro de saída.</p>
+    <div class="daily-receipt-actions">
+      <button id="copyDailyReceiptBtn" class="secondary" type="button">Copiar comprovante</button>
+      <button data-close-daily-receipt class="primary" type="button">Concluir</button>
+    </div>
+  </article>
+</div>
 
 <nav id="managerBottomNav" class="manager-bottom-nav hidden" aria-label="Navegação do gestor">
     <button data-mobile-manager-view="managerHome" class="active">

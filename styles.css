@@ -591,3 +591,71 @@
 .employee-overtime30-days b{
   color:#123b2a;
 }
+
+/* Punch notifications + daily receipt */
+.manager-hero-actions,.manager-header-actions{display:flex;align-items:center;gap:8px}
+.manager-notify-btn{
+  border:1px solid rgba(18,59,42,.12);
+  background:#fff;color:#123b2a;
+  border-radius:14px;padding:10px 12px;
+  font-weight:800;font-size:12px
+}
+.manager-notify-btn.notifications-on,
+#enableManagerNotificationsDesktopBtn.notifications-on{
+  background:rgba(18,59,42,.09);
+  color:#123b2a;
+  border-color:rgba(18,59,42,.18)
+}
+.manager-punch-toast{
+  position:fixed;right:18px;top:18px;z-index:4000;
+  min-width:300px;max-width:min(420px,calc(100vw - 36px));
+  display:flex;align-items:center;gap:12px;
+  padding:14px 16px;border-radius:18px;
+  background:#123b2a;color:#fff;
+  box-shadow:0 18px 50px rgba(0,0,0,.2)
+}
+.manager-punch-toast-icon{
+  width:36px;height:36px;border-radius:12px;
+  background:rgba(255,255,255,.14);
+  display:grid;place-items:center;font-weight:900
+}
+.manager-punch-toast strong,.manager-punch-toast span{display:block}
+.manager-punch-toast span{font-size:12px;opacity:.78;margin-top:3px}
+.daily-receipt-modal{position:fixed;inset:0;z-index:5000}
+.daily-receipt-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(3px)}
+.daily-receipt-sheet{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(520px,calc(100% - 28px));
+  max-height:90vh;overflow:auto;
+  background:#fff;border-radius:26px;padding:22px;
+  box-shadow:0 28px 80px rgba(0,0,0,.25)
+}
+.daily-receipt-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.daily-receipt-head h3{margin:4px 0 0;font-size:22px}
+.daily-receipt-brand{
+  margin:18px 0 10px;padding:12px 14px;border-radius:14px;
+  background:#123b2a;color:#fff;font-weight:900;letter-spacing:.02em
+}
+.daily-receipt-employee{font-weight:850;font-size:18px;margin-bottom:14px}
+.daily-receipt-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.daily-receipt-grid>div{padding:12px;border-radius:14px;background:#f4f7f4}
+.daily-receipt-grid span{display:block;font-size:11px;color:#6c756f;margin-bottom:4px}
+.daily-receipt-grid strong{display:block;font-size:15px;color:#123b2a}
+.daily-receipt-note{font-size:12px;color:#6c756f;line-height:1.45;margin:14px 0}
+.daily-receipt-actions{display:flex;gap:8px}
+.daily-receipt-actions button{flex:1}
+@media(max-width:640px){
+  .manager-punch-toast{left:12px;right:12px;top:12px;min-width:0}
+  .manager-hero-actions{gap:6px}
+  .manager-notify-btn{padding:9px 10px;font-size:11px}
+  .daily-receipt-sheet{top:auto;bottom:0;transform:translateX(-50%);width:100%;border-radius:26px 26px 0 0}
+  .daily-receipt-grid{grid-template-columns:1fr 1fr}
+}
+
+.manager-notify-btn.notifications-on::before,
+#enableManagerNotificationsDesktopBtn.notifications-on::before{
+  content:'●';
+  display:inline-block;
+  margin-right:6px;
+  font-size:9px;
+}

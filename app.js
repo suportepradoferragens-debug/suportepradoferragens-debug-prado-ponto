@@ -1,5 +1,6 @@
 const SUPABASE_URL='https://coeqnnanqzlkkgkejbef.supabase.co';
 const SUPABASE_KEY='sb_publishable_1qD2SXfcWcWJ7AcvrlmErQ_VI6GZg8c';
+const VAPID_PUBLIC_KEY='BLslgxfKIfS7KfsMWDiCoC3KWa9dz5uaUwL9On4W2GKGQoSOQOSnKRRu1NP-hgLWEMd4SfIZJG5FvfNxvuo4LJI';
 const $=id=>document.getElementById(id);
 let client=null;
 
@@ -180,6 +181,7 @@ async function loadProfile(){
   $('roleLabel').textContent=isManager()?'Painel do gestor':'Área do funcionário';
 
   if(isManager()){
+    updateManagerNotificationButtons().catch(()=>{});
     $('employeeNav').classList.add('hidden');
     $('managerNav').classList.remove('hidden');
     $('managerBottomNav')?.classList.remove('hidden');
@@ -322,6 +324,7 @@ async function checkWebPresence(force=false){
         $('autoPresencePill').textContent=entering?'Na empresa':'Fora da empresa';
         $('autoPresenceMsg').textContent=`Registro automático concluído. Distância aproximada da unidade: ${distance} m.`;
         await loadToday();
+        if(!entering) loadAndShowDailyReceipt();
       }else{
         const outside=distance>(branch?.geofence_radius_m||80);
         const externalShift=!!row?.is_present&&outside;
@@ -475,6 +478,7 @@ async function saveEvent(type){
   if(row?.receipt_code) showReceipt(row);
   await loadToday();
   updateEmployeeMobileUI();
+  if(type==='check_out') loadAndShowDailyReceipt();
 }
 
 function distanceM(a,b,c,d){const R=6371e3,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180;const x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))}
@@ -1354,6 +1358,211 @@ async function loadManagerRecords(){
 }
 
 
+
+let managerAudioContext=null;
+let lastDailyReceipt=null;
+
+
+function urlBase64ToUint8Array(base64String){
+  const padding='='.repeat((4-base64String.length%4)%4);
+  const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+  const raw=atob(base64);
+  return Uint8Array.from([...raw].map(ch=>ch.charCodeAt(0)));
+}
+
+async function ensureManagerPushSubscription(){
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)){
+    throw new Error('Este aparelho não oferece Web Push para o Prado Ponto.');
+  }
+
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  const standalone=window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone===true;
+
+  if(isIOS && !standalone){
+    throw new Error('No iPhone, instale o Prado Ponto na Tela de Início antes de ativar notificações.');
+  }
+
+  const registration=await navigator.serviceWorker.ready;
+  let subscription=await registration.pushManager.getSubscription();
+
+  if(!subscription){
+    subscription=await registration.pushManager.subscribe({
+      userVisibleOnly:true,
+      applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+  }
+
+  const json=subscription.toJSON();
+  const {error}=await client.rpc('save_manager_push_subscription',{
+    p_endpoint:subscription.endpoint,
+    p_p256dh:json.keys?.p256dh||'',
+    p_auth:json.keys?.auth||'',
+    p_user_agent:navigator.userAgent
+  });
+  if(error) throw error;
+  return subscription;
+}
+
+async function enableManagerNotifications(){
+  if(!isManager()) return;
+
+  try{
+    if(!('Notification' in window)){
+      throw new Error('Notificações não são compatíveis com este aparelho.');
+    }
+
+    const permission=Notification.permission==='granted'
+      ? 'granted'
+      : await Notification.requestPermission();
+
+    if(permission!=='granted'){
+      throw new Error('Permissão de notificações não autorizada.');
+    }
+
+    await ensureManagerPushSubscription();
+
+    try{
+      const Ctx=window.AudioContext||window.webkitAudioContext;
+      if(Ctx){
+        managerAudioContext=managerAudioContext||new Ctx();
+        if(managerAudioContext.state==='suspended') await managerAudioContext.resume();
+        playManagerPunchSound();
+      }
+    }catch{}
+
+    updateManagerNotificationButtons();
+    alert('Notificações ativadas. Este aparelho poderá receber avisos de ponto mesmo com o Prado Ponto fechado.');
+  }catch(e){
+    updateManagerNotificationButtons();
+    alert(e?.message||'Não foi possível ativar as notificações.');
+  }
+}
+
+async function updateManagerNotificationButtons(){
+  let enabled=false;
+  try{
+    if('Notification' in window && Notification.permission==='granted' && 'serviceWorker' in navigator && 'PushManager' in window){
+      const reg=await navigator.serviceWorker.ready;
+      enabled=!!(await reg.pushManager.getSubscription());
+    }
+  }catch{}
+  const text=enabled?'Notificações ativas':'Ativar notificações';
+  ['enableManagerNotificationsBtn','enableManagerNotificationsDesktopBtn'].forEach(id=>{
+    const el=$(id);
+    if(!el) return;
+    el.textContent=text;
+    el.classList.toggle('notifications-on',enabled);
+  });
+}
+
+function playManagerPunchSound(){
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    managerAudioContext=managerAudioContext||new Ctx();
+    if(managerAudioContext.state!=='running') return;
+    const osc=managerAudioContext.createOscillator();
+    const gain=managerAudioContext.createGain();
+    osc.type='sine';
+    osc.frequency.setValueAtTime(880,managerAudioContext.currentTime);
+    gain.gain.setValueAtTime(.0001,managerAudioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.18,managerAudioContext.currentTime+.02);
+    gain.gain.exponentialRampToValueAtTime(.0001,managerAudioContext.currentTime+.28);
+    osc.connect(gain);
+    gain.connect(managerAudioContext.destination);
+    osc.start();
+    osc.stop(managerAudioContext.currentTime+.3);
+  }catch{}
+}
+
+function showManagerPunchToast(row){
+  const toast=$('managerPunchToast');
+  if(!toast) return;
+  const type=row.event_type==='check_in'?'Entrada':'Saída';
+  $('managerPunchToastTitle').textContent=`${type} registrada`;
+  $('managerPunchToastText').textContent=`${row.employee_name} • ${fmtTime(row.occurred_at)}`;
+  toast.classList.remove('hidden');
+  clearTimeout(showManagerPunchToast.timer);
+  showManagerPunchToast.timer=setTimeout(()=>toast.classList.add('hidden'),6000);
+}
+
+function handleManagerPunchNotification(row){
+  if(!isManager()||!row) return;
+  const type=row.event_type==='check_in'?'Entrada':'Saída';
+  showManagerPunchToast(row);
+  playManagerPunchSound();
+
+  if('Notification' in window && Notification.permission==='granted'){
+    try{
+      new Notification(`${type} • ${row.employee_name}`,{
+        body:`Ponto registrado às ${fmtTime(row.occurred_at)}.`,
+        icon:'/icon-180.png',
+        tag:`punch-${row.attendance_event_id||row.id||Date.now()}`
+      });
+    }catch{}
+  }
+}
+
+function showDailyReceipt(receipt){
+  if(!receipt) return;
+  lastDailyReceipt=receipt;
+  $('dailyReceiptEmployee').textContent=me?.full_name||'Funcionário';
+  $('dailyReceiptDate').textContent=new Date(receipt.work_date+'T12:00:00').toLocaleDateString('pt-BR');
+  $('dailyReceiptIn').textContent=receipt.first_check_in?fmtTime(receipt.first_check_in):'—';
+  $('dailyReceiptOut').textContent=receipt.last_check_out?fmtTime(receipt.last_check_out):'—';
+  $('dailyReceiptWorked').textContent=formatMinutes(receipt.worked_minutes||0);
+  $('dailyReceiptOvertime').textContent=formatMinutes(receipt.overtime_minutes||0);
+  $('dailyReceiptCode').textContent=receipt.receipt_code||'—';
+  $('dailyReceiptModal').classList.remove('hidden');
+
+  if('Notification' in window && Notification.permission==='granted'){
+    try{
+      new Notification('Comprovante de jornada disponível',{
+        body:`Expediente concluído. Saída ${receipt.last_check_out?fmtTime(receipt.last_check_out):''}.`,
+        icon:'/icon-180.png',
+        tag:`daily-receipt-${receipt.work_date}`
+      });
+    }catch{}
+  }
+}
+
+async function loadAndShowDailyReceipt(){
+  if(!me||isManager()) return;
+  await new Promise(r=>setTimeout(r,220));
+  const today=new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
+  const {data,error}=await client.from('daily_attendance_receipts')
+    .select('work_date,first_check_in,last_check_out,worked_minutes,overtime_minutes,receipt_code')
+    .eq('employee_id',me.id)
+    .eq('work_date',today)
+    .maybeSingle();
+  if(error||!data) return;
+  showDailyReceipt(data);
+}
+
+function closeDailyReceipt(){
+  $('dailyReceiptModal')?.classList.add('hidden');
+}
+
+async function copyDailyReceipt(){
+  if(!lastDailyReceipt) return;
+  const r=lastDailyReceipt;
+  const text=[
+    'PRADO PONTO — COMPROVANTE DE JORNADA',
+    `Funcionário: ${me?.full_name||'Funcionário'}`,
+    `Data: ${new Date(r.work_date+'T12:00:00').toLocaleDateString('pt-BR')}`,
+    `Entrada: ${r.first_check_in?fmtTime(r.first_check_in):'—'}`,
+    `Saída: ${r.last_check_out?fmtTime(r.last_check_out):'—'}`,
+    `Tempo trabalhado: ${formatMinutes(r.worked_minutes||0)}`,
+    `Hora extra: ${formatMinutes(r.overtime_minutes||0)}`,
+    `Código: ${r.receipt_code||'—'}`
+  ].join('\n');
+  try{
+    await navigator.clipboard.writeText(text);
+    alert('Comprovante copiado.');
+  }catch{
+    prompt('Copie o comprovante:',text);
+  }
+}
+
 function parseTimeToToday(value){
   if(!value) return null;
   const [h,m]=value.slice(0,5).split(':').map(Number);
@@ -1480,6 +1689,11 @@ if($('saveEmployeeRulesBtn')) $('saveEmployeeRulesBtn').onclick=saveEmployeeRule
 if($('closeThanksBtn')) $('closeThanksBtn').onclick=()=>$('endShiftThanks').classList.add('hidden');
 if($('refreshManagerDashboard')) $('refreshManagerDashboard').onclick=loadManagerHome;
 if($('mobileRefreshBtn')) $('mobileRefreshBtn').onclick=loadManagerHome;
+if($('enableManagerNotificationsBtn')) $('enableManagerNotificationsBtn').onclick=enableManagerNotifications;
+if($('enableManagerNotificationsDesktopBtn')) $('enableManagerNotificationsDesktopBtn').onclick=enableManagerNotifications;
+document.querySelectorAll('[data-close-daily-receipt]').forEach(el=>el.onclick=closeDailyReceipt);
+if($('copyDailyReceiptBtn')) $('copyDailyReceiptBtn').onclick=copyDailyReceipt;
+
 if($('openMobileMapBtn')) $('openMobileMapBtn').onclick=openMobileMap;
 if($('closeMobileMapBtn')) $('closeMobileMapBtn').onclick=closeMobileMap;
 document.querySelectorAll('[data-mobile-manager-view]').forEach(btn=>{
@@ -1514,6 +1728,12 @@ if(client){
   client.channel('manager-presence-live')
     .on('postgres_changes',{event:'*',schema:'public',table:'employee_presence'},()=>{
       if(me&&isManager()&&$('managerHome')?.classList.contains('active-view')) loadManagerHome();
+    })
+    .subscribe();
+
+  client.channel('manager-punch-live')
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'manager_notifications'},payload=>{
+      if(me&&isManager()) handleManagerPunchNotification(payload.new);
     })
     .subscribe();
 }
