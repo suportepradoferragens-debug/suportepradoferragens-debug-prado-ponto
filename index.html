@@ -5,81 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Prado Ponto</title>
   <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"></script>
 </head>
 <body>
-  <div class="app-shell">
+  <div id="authScreen" class="auth-screen">
+    <div class="auth-card">
+      <div class="brand auth-brand"><span class="brand-mark">P</span><div><strong>Prado Ponto</strong><small>Gestão de jornada</small></div></div>
+      <h1>Entrar</h1>
+      <p>Use o e-mail cadastrado pela Prado Ferragens.</p>
+      <label>E-mail<input id="email" type="email" autocomplete="email" placeholder="seuemail@empresa.com"></label>
+      <label>Senha<input id="password" type="password" autocomplete="current-password" placeholder="Sua senha"></label>
+      <button id="loginBtn" class="primary full">Entrar</button>
+      <button id="signupBtn" class="secondary full">Criar primeiro acesso</button>
+      <small id="authMsg" class="auth-msg"></small>
+    </div>
+  </div>
+
+  <div id="appShell" class="app-shell hidden">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">P</span><div><strong>Prado Ponto</strong><small>Gestão de jornada</small></div></div>
       <button class="nav active" data-view="employee">Meu ponto</button>
-      <button class="nav" data-view="manager">Painel gestor</button>
-      <button class="nav" data-view="settings">Configurações</button>
-      <div class="sidebar-footer">MVP • presença inteligente</div>
+      <button class="nav manager-only" data-view="manager">Painel gestor</button>
+      <button class="nav" data-view="settings">Unidade</button>
+      <button id="logoutBtn" class="nav logout">Sair</button>
+      <div class="sidebar-footer">Prado Ferragens • ponto digital</div>
     </aside>
 
     <main class="main">
       <header class="topbar">
-        <div><h1 id="pageTitle">Meu ponto</h1><p id="pageSubtitle">Registro automático por presença</p></div>
-        <div class="user"><div class="avatar">JS</div><div><strong>João Silva</strong><small>Unidade Sorocaba</small></div></div>
+        <div><h1 id="pageTitle">Meu ponto</h1><p id="pageSubtitle">Registros salvos no Supabase</p></div>
+        <div class="user"><div class="avatar" id="avatar">PF</div><div><strong id="userName">Funcionário</strong><small id="userBranch">Unidade</small></div></div>
       </header>
 
       <section id="employee" class="view active-view">
-        <div class="hero-card">
-          <div><span class="eyebrow">STATUS ATUAL</span><h2 id="statusText">Fora da empresa</h2><p id="statusHint">Aguardando detecção de presença.</p></div>
-          <div class="status-orb" id="statusOrb"></div>
-        </div>
-
+        <div class="hero-card"><div><span class="eyebrow">STATUS ATUAL</span><h2 id="statusText">Carregando...</h2><p id="statusHint">Consultando os registros de hoje.</p></div><div class="status-orb" id="statusOrb"></div></div>
         <div class="grid three">
           <article class="card"><span>Entrada</span><strong id="checkIn">—</strong><small>Hoje</small></article>
           <article class="card"><span>Saída</span><strong id="checkOut">—</strong><small>Hoje</small></article>
-          <article class="card"><span>Horas trabalhadas</span><strong id="worked">0h00</strong><small>Jornada prevista: 8h48</small></article>
+          <article class="card"><span>Registros</span><strong id="eventCount">0</strong><small>Eventos de hoje</small></article>
         </div>
-
         <div class="grid two">
           <article class="card wide">
-            <div class="card-head"><div><span class="eyebrow">PRESENÇA</span><h3>Verificação automática</h3></div><span class="pill" id="geoPill">GPS aguardando</span></div>
-            <div class="checks">
-              <div><span class="dot" id="geoDot"></span><div><strong>Geofence</strong><small id="geoText">Não verificado</small></div></div>
-              <div><span class="dot" id="deviceDot"></span><div><strong>Aparelho autorizado</strong><small>Dispositivo de João</small></div></div>
-              <div><span class="dot" id="presenceDot"></span><div><strong>Presença física</strong><small id="presenceText">Wi‑Fi / Beacon aguardando</small></div></div>
-            </div>
-            <div class="actions">
-              <button id="useLocation" class="primary">Usar minha localização</button>
-              <button id="simulateIn" class="secondary">Simular chegada</button>
-              <button id="simulateOut" class="ghost">Simular saída</button>
-            </div>
-            <p class="privacy">O MVP salva somente eventos de entrada/saída. Não cria histórico contínuo de localização.</p>
+            <div class="card-head"><div><span class="eyebrow">PONTO</span><h3>Registrar jornada</h3></div><span class="pill" id="savePill">Banco conectado</span></div>
+            <div class="actions"><button id="checkInBtn" class="primary">Registrar entrada</button><button id="checkOutBtn" class="secondary">Registrar saída</button><button id="useLocation" class="ghost">Verificar localização</button></div>
+            <p class="privacy" id="locationInfo">A localização só é lida quando você toca em “Verificar localização”.</p>
           </article>
-
-          <article class="card wide">
-            <div class="card-head"><div><span class="eyebrow">HOJE</span><h3>Linha do tempo</h3></div></div>
-            <div id="timeline" class="timeline"><div class="empty">Nenhum ponto registrado hoje.</div></div>
-          </article>
+          <article class="card wide"><div class="card-head"><div><span class="eyebrow">HOJE</span><h3>Linha do tempo</h3></div></div><div id="timeline" class="timeline"><div class="empty">Carregando...</div></div></article>
         </div>
       </section>
 
       <section id="manager" class="view">
-        <div class="grid four">
-          <article class="card"><span>Funcionários</span><strong>18</strong><small>Total</small></article>
-          <article class="card"><span>Presentes</span><strong>16</strong><small>Na empresa</small></article>
-          <article class="card"><span>Atrasados</span><strong>1</strong><small>Hoje</small></article>
-          <article class="card"><span>Ausentes</span><strong>2</strong><small>Sem entrada</small></article>
-        </div>
-        <article class="card table-card">
-          <div class="card-head"><div><span class="eyebrow">EQUIPE</span><h3>Presença de hoje</h3></div><span class="pill success">Atualizado agora</span></div>
-          <div class="table-wrap"><table><thead><tr><th>Funcionário</th><th>Entrada</th><th>Intervalo</th><th>Retorno</th><th>Saída</th><th>Status</th></tr></thead><tbody>
-            <tr><td>João Silva</td><td id="mgrCheckIn">—</td><td>12:03</td><td>13:01</td><td id="mgrCheckOut">—</td><td><span class="badge neutral" id="mgrStatus">Aguardando</span></td></tr>
-            <tr><td>Carlos Mendes</td><td>08:02</td><td>12:00</td><td>13:00</td><td>—</td><td><span class="badge good">Trabalhando</span></td></tr>
-            <tr><td>Ana Costa</td><td>07:55</td><td>12:10</td><td>13:06</td><td>—</td><td><span class="badge good">Trabalhando</span></td></tr>
-            <tr><td>Marcos Lima</td><td>—</td><td>—</td><td>—</td><td>—</td><td><span class="badge bad">Ausente</span></td></tr>
-          </tbody></table></div>
-        </article>
+        <div class="grid three"><article class="card"><span>Funcionários ativos</span><strong id="employeeTotal">0</strong><small>Cadastro</small></article><article class="card"><span>Presentes</span><strong id="presentTotal">0</strong><small>Com entrada sem saída</small></article><article class="card"><span>Registros hoje</span><strong id="todayTotal">0</strong><small>Eventos</small></article></div>
+        <article class="card table-card"><div class="card-head"><div><span class="eyebrow">EQUIPE</span><h3>Presença de hoje</h3></div><span class="pill success">Supabase</span></div><div class="table-wrap"><table><thead><tr><th>Funcionário</th><th>Entrada</th><th>Saída</th><th>Status</th></tr></thead><tbody id="teamBody"></tbody></table></div></article>
       </section>
 
       <section id="settings" class="view">
-        <div class="grid two">
-          <article class="card wide"><span class="eyebrow">UNIDADE</span><h3>Sorocaba</h3><label>Latitude<input id="lat" type="number" step="any" value="-23.5015"></label><label>Longitude<input id="lng" type="number" step="any" value="-47.4526"></label><label>Raio permitido (m)<input id="radius" type="number" value="80"></label><button id="saveSettings" class="primary">Salvar regras</button></article>
-          <article class="card wide"><span class="eyebrow">SEGURANÇA</span><h3>Critérios de confirmação</h3><div class="toggle-row"><span>Geofence obrigatório</span><input type="checkbox" checked disabled></div><div class="toggle-row"><span>Aparelho autorizado</span><input type="checkbox" checked disabled></div><div class="toggle-row"><span>Wi‑Fi / Beacon</span><input id="presenceRequired" type="checkbox" checked></div><div class="toggle-row"><span>Permanência mínima</span><strong>60 s</strong></div></article>
-        </div>
+        <div class="grid two"><article class="card wide"><span class="eyebrow">UNIDADE</span><h3 id="branchName">Unidade</h3><p id="branchAddress">—</p><div class="checks"><div><span class="dot on"></span><div><strong>Raio configurado</strong><small id="branchRadius">—</small></div></div><div><span class="dot" id="coordsDot"></span><div><strong>Coordenadas</strong><small id="branchCoords">Ainda não configuradas</small></div></div></div></article><article class="card wide"><span class="eyebrow">SEGURANÇA</span><h3>Controle de acesso</h3><p class="privacy">Cada funcionário acessa somente os próprios registros. Gestores autorizados podem consultar a equipe.</p></article></div>
       </section>
     </main>
   </div>
