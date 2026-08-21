@@ -127,7 +127,7 @@ async function createEmployee(){
   $('employeeCreateMsg').textContent='Criando cadastro...';
   const {error}=await client.from('employees').insert({company_id:me.company_id,branch_id:me.branch_id,full_name:name,email,role,active:true});
   if(error){$('employeeCreateMsg').textContent='Erro: '+error.message;return}
-  $('employeeCreateMsg').textContent='Funcionário cadastrado. Agora ele já pode criar o primeiro acesso com esse e-mail.';
+  $('employeeCreateMsg').textContent='Funcionário cadastrado. Use o botão Copiar link e envie o convite para ele entrar com Google.';
   $('newName').value='';$('newEmail').value='';$('newRole').value='employee';
   await loadEmployees();await loadManagerHome();
 }
@@ -224,25 +224,36 @@ function openView(id){
 async function boot(){
   const {data:{session}}=await client.auth.getSession();
   if(!session){showAuth();return}
-  try{await loadProfile();showApp();if(!isManager()){await loadToday();await loadMySchedule()}}catch(e){await client.auth.signOut();showAuth();setAuthMsg(e.message,true)}
+  const invited=(sessionStorage.getItem('pradoInviteEmail')||new URLSearchParams(location.search).get('email')||'').toLowerCase();
+  const signedEmail=(session.user?.email||'').toLowerCase();
+  if(invited && signedEmail && invited!==signedEmail){
+    await client.auth.signOut();
+    showAuth();
+    setAuthMsg(`Este convite foi criado para ${invited}. Entre no Google com essa conta.`,true);
+    return;
+  }
+  try{
+    await loadProfile();
+    sessionStorage.removeItem('pradoInviteEmail');
+    history.replaceState({},'',location.pathname);
+    showApp();
+    if(!isManager()){await loadToday();await loadMySchedule()}
+  }catch(e){
+    await client.auth.signOut();
+    showAuth();
+    setAuthMsg('Seu Google foi autenticado, mas este e-mail ainda não está cadastrado como funcionário. Peça um convite ao gestor.',true);
+  }
 }
 
-$('loginBtn').onclick=async()=>{
-  setAuthMsg('Entrando...');
-  const email=$('email').value.trim(),password=$('password').value;
-  if(!email||!password)return setAuthMsg('Informe e-mail e senha.',true);
-  const {error}=await client.auth.signInWithPassword({email,password});
-  if(error)return setAuthMsg('Não foi possível entrar. Confira e-mail e senha.',true);
-  await boot();
-};
-$('signupBtn').onclick=async()=>{
-  setAuthMsg('Criando acesso...');
-  const email=$('email').value.trim(),password=$('password').value;
-  if(!email||password.length<6)return setAuthMsg('Use o e-mail cadastrado pelo gestor e uma senha de pelo menos 6 caracteres.',true);
-  const {data,error}=await client.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin}});
-  if(error)return setAuthMsg(error.message,true);
-  if(data.session){setAuthMsg('Acesso criado. Entrando...');await boot()}
-  else setAuthMsg('Acesso criado. Confira seu e-mail e confirme o cadastro antes de entrar.');
+$('googleLoginBtn').onclick=async()=>{
+  setAuthMsg('Abrindo o Google...');
+  const inviteEmail=new URLSearchParams(location.search).get('email');
+  if(inviteEmail) sessionStorage.setItem('pradoInviteEmail',inviteEmail.toLowerCase());
+  const {error}=await client.auth.signInWithOAuth({
+    provider:'google',
+    options:{redirectTo:window.location.origin}
+  });
+  if(error)setAuthMsg('Não foi possível iniciar o login com Google: '+error.message,true);
 };
 $('logoutBtn').onclick=async()=>{await client.auth.signOut();location.reload()};
 $('checkInBtn').onclick=()=>saveEvent('check_in');
@@ -256,5 +267,10 @@ $('clearScheduleBtn').onclick=clearSchedule;
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
 client.auth.onAuthStateChange((e)=>{if(e==='SIGNED_OUT')showAuth()});
 const inviteEmail=new URLSearchParams(location.search).get('email');
-if(inviteEmail){$('email').value=inviteEmail;setAuthMsg('Convite recebido. Crie seu primeiro acesso usando este e-mail.');}
+if(inviteEmail){
+  $('inviteIdentity').classList.remove('hidden');
+  $('inviteEmailLabel').textContent=inviteEmail;
+  $('authIntro').textContent='Use no Google exatamente a conta abaixo para acessar seu ponto.';
+  setAuthMsg('Convite reconhecido. Toque em Continuar com Google.');
+}
 boot();

@@ -11,13 +11,17 @@
   <div id="authScreen" class="auth-screen">
     <div class="auth-card">
       <div class="brand auth-brand"><span class="brand-mark">P</span><div><strong>Prado Ponto</strong><small>Gestão de jornada</small></div></div>
-      <h1>Entrar</h1>
-      <p>Funcionários e gestores usam o mesmo acesso. O sistema abre o painel correto conforme o perfil.</p>
-      <label>E-mail<input id="email" type="email" autocomplete="email"></label>
-      <label>Senha<input id="password" type="password" autocomplete="current-password"></label>
-      <button id="loginBtn" class="primary full">Entrar</button>
-      <button id="signupBtn" class="secondary full">Criar primeiro acesso</button>
-      <small id="authMsg" class="auth-msg"></small>
+      <h1>Acessar Prado Ponto</h1>
+      <p id="authIntro">Entre com a conta Google vinculada ao e-mail cadastrado pelo gestor.</p>
+      <div id="inviteIdentity" class="invite-identity hidden">
+        <span>Convite para</span>
+        <strong id="inviteEmailLabel"></strong>
+      </div>
+      <button id="googleLoginBtn" class="google-btn">
+        <span class="google-g">G</span>
+        <span>Continuar com Google</span>
+      </button>
+      <small id="authMsg" class="auth-msg">Sem senha. O acesso é identificado pelo e-mail da conta Google.</small>
     </div>
   </div>
 
@@ -99,14 +103,14 @@
               </select>
             </label>
             <button id="createEmployeeBtn" class="primary">Criar cadastro</button>
-            <p class="privacy" id="employeeCreateMsg">Depois do cadastro, a pessoa usa esse mesmo e-mail em “Criar primeiro acesso”.</p>
+            <p class="privacy" id="employeeCreateMsg">Depois do cadastro, envie o link de convite. O funcionário entra com o Google usando esse mesmo e-mail.</p>
           </article>
           <article class="card wide">
             <span class="eyebrow">COMO FUNCIONA</span><h3>Fluxo do funcionário</h3>
             <div class="steps">
               <div><strong>1</strong><span>Gestor cria nome e e-mail.</span></div>
-              <div><strong>2</strong><span>Funcionário cria o primeiro acesso.</span></div>
-              <div><strong>3</strong><span>O sistema vincula a conta automaticamente.</span></div>
+              <div><strong>2</strong><span>Funcionário abre o link e toca em Continuar com Google.</span></div>
+              <div><strong>3</strong><span>O sistema confere o e-mail Google e vincula o cadastro.</span></div>
               <div><strong>4</strong><span>Ele passa a ver somente o próprio ponto.</span></div>
             </div>
           </article>
