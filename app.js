@@ -9,6 +9,16 @@ const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
 const startToday=()=>{const d=new Date();d.setHours(0,0,0,0);return d.toISOString()};
 const endToday=()=>{const d=new Date();d.setHours(23,59,59,999);return d.toISOString()};
 const initials=n=>(n||'PF').split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
+const dayNames=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function inviteLink(email){const u=new URL(window.location.origin);u.searchParams.set('email',email);u.searchParams.set('firstAccess','1');return u.toString()}
+async function copyInvite(email){
+  const link=inviteLink(email);
+  try{await navigator.clipboard.writeText(link);alert('Link do funcionário copiado. Agora é só enviar por WhatsApp ou e-mail.')}
+  catch{prompt('Copie este link:',link)}
+}
+window.copyInvite=copyInvite;
+
 function setAuthMsg(msg,bad=false){$('authMsg').textContent=msg;$('authMsg').classList.toggle('bad',bad)}
 function showAuth(){$('authScreen').classList.remove('hidden');$('appShell').classList.add('hidden')}
 function showApp(){$('authScreen').classList.add('hidden');$('appShell').classList.remove('hidden')}
@@ -91,8 +101,24 @@ async function loadMyHistory(){
 
 async function loadEmployees(){
   const {data,error}=await client.from('employees').select('id,full_name,email,role,active,user_id').order('full_name');
-  if(error){$('employeesBody').innerHTML=`<tr><td colspan="5">${error.message}</td></tr>`;return}
-  $('employeesBody').innerHTML=(data||[]).map(e=>`<tr><td>${e.full_name}</td><td>${e.email||'—'}</td><td>${e.role==='admin'?'Administrador':e.role==='manager'?'Gestor':'Funcionário'}</td><td>${e.user_id?'Criado':'Pendente'}</td><td><span class="badge ${e.active?'good':'neutral'}">${e.active?'Ativo':'Inativo'}</span></td></tr>`).join('');
+  if(error){$('employeesBody').innerHTML=`<tr><td colspan="6">${esc(error.message)}</td></tr>`;return}
+  const rows=data||[];
+  $('employeesBody').innerHTML=rows.map(e=>`<tr>
+    <td>${esc(e.full_name)}</td><td>${esc(e.email||'—')}</td>
+    <td>${e.role==='admin'?'Administrador':e.role==='manager'?'Gestor':'Funcionário'}</td>
+    <td>${e.user_id?'Criado':'Pendente'}</td>
+    <td><span class="badge ${e.active?'good':'neutral'}">${e.active?'Ativo':'Inativo'}</span></td>
+    <td><div class="row-actions">
+      ${e.email?`<button class="mini" onclick="copyInvite('${String(e.email).replace(/'/g,"\\'")}')">Copiar link</button>`:''}
+      <button class="mini" data-schedule="${e.id}">Horários</button>
+    </div></td>
+  </tr>`).join('');
+  $('scheduleEmployee').innerHTML='<option value="">Selecione...</option>'+rows.filter(e=>e.active).map(e=>`<option value="${e.id}">${esc(e.full_name)}</option>`).join('');
+  document.querySelectorAll('[data-schedule]').forEach(btn=>btn.onclick=()=>{
+    $('scheduleEmployee').value=btn.dataset.schedule;
+    loadSchedulePreview();
+    $('scheduleEmployee').scrollIntoView({behavior:'smooth',block:'center'});
+  });
 }
 
 async function createEmployee(){
@@ -104,6 +130,52 @@ async function createEmployee(){
   $('employeeCreateMsg').textContent='Funcionário cadastrado. Agora ele já pode criar o primeiro acesso com esse e-mail.';
   $('newName').value='';$('newEmail').value='';$('newRole').value='employee';
   await loadEmployees();await loadManagerHome();
+}
+
+
+async function loadMySchedule(){
+  const {data,error}=await client.from('work_schedules').select('weekday,start_time,break_start,break_end,end_time,tolerance_minutes').eq('employee_id',me.id).order('weekday');
+  if(error||!(data||[]).length){$('mySchedule').innerHTML='<span class="muted">Nenhum horário definido ainda.</span>';return}
+  $('mySchedule').innerHTML=(data||[]).map(s=>`<div class="schedule-row"><strong>${dayNames[s.weekday]}</strong><span>${s.start_time?.slice(0,5)||'—'} → ${s.break_start?.slice(0,5)||'—'} / ${s.break_end?.slice(0,5)||'—'} → ${s.end_time?.slice(0,5)||'—'}</span><small>Tolerância ${s.tolerance_minutes} min</small></div>`).join('');
+}
+
+async function loadSchedulePreview(){
+  const employeeId=$('scheduleEmployee').value;
+  if(!employeeId){$('schedulePreview').innerHTML='';return}
+  const {data,error}=await client.from('work_schedules').select('weekday,start_time,break_start,break_end,end_time,tolerance_minutes').eq('employee_id',employeeId).order('weekday');
+  if(error){$('schedulePreview').textContent=error.message;return}
+  $('schedulePreview').innerHTML=(data||[]).length?(data||[]).map(s=>`<div class="schedule-row"><strong>${dayNames[s.weekday]}</strong><span>${s.start_time?.slice(0,5)||'—'} → ${s.break_start?.slice(0,5)||'—'} / ${s.break_end?.slice(0,5)||'—'} → ${s.end_time?.slice(0,5)||'—'}</span><small>${s.tolerance_minutes} min tolerância</small></div>`).join(''):'<span class="muted">Nenhum horário definido para este funcionário.</span>';
+}
+
+async function saveSchedule(){
+  const employeeId=$('scheduleEmployee').value;
+  const days=[...document.querySelectorAll('.dayCheck:checked')].map(x=>Number(x.value));
+  if(!employeeId){$('scheduleMsg').textContent='Selecione um funcionário.';return}
+  if(!days.length){$('scheduleMsg').textContent='Selecione pelo menos um dia.';return}
+  const rows=days.map(weekday=>({
+    employee_id:employeeId,
+    weekday,
+    start_time:$('scheduleStart').value||null,
+    break_start:$('scheduleBreakStart').value||null,
+    break_end:$('scheduleBreakEnd').value||null,
+    end_time:$('scheduleEnd').value||null,
+    tolerance_minutes:Number($('scheduleTolerance').value||5)
+  }));
+  $('scheduleMsg').textContent='Salvando horários...';
+  const {error}=await client.from('work_schedules').upsert(rows,{onConflict:'employee_id,weekday'});
+  if(error){$('scheduleMsg').textContent='Erro: '+error.message;return}
+  $('scheduleMsg').textContent='Horários salvos com sucesso.';
+  await loadSchedulePreview();
+}
+
+async function clearSchedule(){
+  const employeeId=$('scheduleEmployee').value;
+  const days=[...document.querySelectorAll('.dayCheck:checked')].map(x=>Number(x.value));
+  if(!employeeId||!days.length){$('scheduleMsg').textContent='Selecione funcionário e dias.';return}
+  if(!confirm('Remover os horários dos dias selecionados?')) return;
+  const {error}=await client.from('work_schedules').delete().eq('employee_id',employeeId).in('weekday',days);
+  $('scheduleMsg').textContent=error?'Erro: '+error.message:'Horários removidos.';
+  if(!error) await loadSchedulePreview();
 }
 
 async function loadManagerHome(){
@@ -152,7 +224,7 @@ function openView(id){
 async function boot(){
   const {data:{session}}=await client.auth.getSession();
   if(!session){showAuth();return}
-  try{await loadProfile();showApp();if(!isManager())await loadToday()}catch(e){await client.auth.signOut();showAuth();setAuthMsg(e.message,true)}
+  try{await loadProfile();showApp();if(!isManager()){await loadToday();await loadMySchedule()}}catch(e){await client.auth.signOut();showAuth();setAuthMsg(e.message,true)}
 }
 
 $('loginBtn').onclick=async()=>{
@@ -178,6 +250,11 @@ $('checkOutBtn').onclick=()=>saveEvent('check_out');
 $('useLocation').onclick=verifyLocation;
 $('createEmployeeBtn').onclick=createEmployee;
 $('refreshEmployees').onclick=loadEmployees;
+$('scheduleEmployee').onchange=loadSchedulePreview;
+$('saveScheduleBtn').onclick=saveSchedule;
+$('clearScheduleBtn').onclick=clearSchedule;
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
 client.auth.onAuthStateChange((e)=>{if(e==='SIGNED_OUT')showAuth()});
+const inviteEmail=new URLSearchParams(location.search).get('email');
+if(inviteEmail){$('email').value=inviteEmail;setAuthMsg('Convite recebido. Crie seu primeiro acesso usando este e-mail.');}
 boot();

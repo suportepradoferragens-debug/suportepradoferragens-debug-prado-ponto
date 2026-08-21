@@ -61,6 +61,10 @@
           </article>
           <article class="card wide"><div class="card-head"><div><span class="eyebrow">HOJE</span><h3>Linha do tempo</h3></div></div><div id="timeline" class="timeline"></div></article>
         </div>
+        <article class="card table-card">
+          <div class="card-head"><div><span class="eyebrow">MINHA JORNADA</span><h3>Horários definidos pelo gestor</h3></div></div>
+          <div id="mySchedule" class="schedule-summary">Carregando horários...</div>
+        </article>
       </section>
 
       <section id="employeeHistory" class="view">
@@ -109,7 +113,38 @@
         </div>
         <article class="card table-card">
           <div class="card-head"><div><span class="eyebrow">CADASTROS</span><h3>Funcionários</h3></div><button id="refreshEmployees" class="ghost">Atualizar</button></div>
-          <div class="table-wrap"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Acesso</th><th>Status</th></tr></thead><tbody id="employeesBody"></tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Acesso</th><th>Status</th><th>Ações</th></tr></thead><tbody id="employeesBody"></tbody></table></div>
+        </article>
+
+        <article class="card table-card">
+          <div class="card-head"><div><span class="eyebrow">JORNADA</span><h3>Definir horários do funcionário</h3></div><span class="pill">Gestor</span></div>
+          <div class="schedule-form">
+            <label>Funcionário
+              <select id="scheduleEmployee"><option value="">Selecione...</option></select>
+            </label>
+            <div class="days">
+              <label><input type="checkbox" class="dayCheck" value="1" checked> Seg</label>
+              <label><input type="checkbox" class="dayCheck" value="2" checked> Ter</label>
+              <label><input type="checkbox" class="dayCheck" value="3" checked> Qua</label>
+              <label><input type="checkbox" class="dayCheck" value="4" checked> Qui</label>
+              <label><input type="checkbox" class="dayCheck" value="5" checked> Sex</label>
+              <label><input type="checkbox" class="dayCheck" value="6"> Sáb</label>
+              <label><input type="checkbox" class="dayCheck" value="0"> Dom</label>
+            </div>
+            <div class="time-grid">
+              <label>Entrada<input id="scheduleStart" type="time" value="08:00"></label>
+              <label>Início intervalo<input id="scheduleBreakStart" type="time" value="12:00"></label>
+              <label>Retorno<input id="scheduleBreakEnd" type="time" value="13:00"></label>
+              <label>Saída<input id="scheduleEnd" type="time" value="17:48"></label>
+              <label>Tolerância (min)<input id="scheduleTolerance" type="number" min="0" max="120" value="5"></label>
+            </div>
+            <div class="actions">
+              <button id="saveScheduleBtn" class="primary">Salvar horários</button>
+              <button id="clearScheduleBtn" class="ghost">Remover horários selecionados</button>
+            </div>
+            <p id="scheduleMsg" class="privacy">Selecione o funcionário e os dias que deseja configurar.</p>
+            <div id="schedulePreview" class="schedule-summary"></div>
+          </div>
         </article>
       </section>
 
