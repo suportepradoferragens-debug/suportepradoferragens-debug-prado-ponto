@@ -2,7 +2,7 @@ const SUPABASE_URL='https://coeqnnanqzlkkgkejbef.supabase.co';
 const SUPABASE_KEY='sb_publishable_1qD2SXfcWcWJ7AcvrlmErQ_VI6GZg8c';
 const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
-let me=null,branch=null,todayEvents=[],currentLocation=null;
+let me=null,branch=null,todayEvents=[],currentLocation=null,employeeDirectory=[];
 
 const fmtTime=iso=>new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate=iso=>new Date(iso).toLocaleDateString('pt-BR');
@@ -167,9 +167,13 @@ async function checkWebPresence(force=false){
         $('autoPresenceMsg').textContent=`Registro automático concluído. Distância aproximada da unidade: ${distance} m.`;
         await loadToday();
       }else{
-        $('autoPresenceTitle').textContent=row?.is_present?'Você está na empresa':'Você está fora da empresa';
-        $('autoPresencePill').textContent=row?.is_present?'Na empresa':'Fora da empresa';
-        $('autoPresenceMsg').textContent=`Nenhuma nova batida necessária. Distância aproximada da unidade: ${distance} m.`;
+        const outside=distance>(branch?.geofence_radius_m||80);
+        const externalShift=!!row?.is_present&&outside;
+        $('autoPresenceTitle').textContent=externalShift?'Jornada ativa em serviço externo':row?.is_present?'Você está na empresa':'Você está fora da empresa';
+        $('autoPresencePill').textContent=externalShift?'Serviço externo':row?.is_present?'Na empresa':'Fora da empresa';
+        $('autoPresenceMsg').textContent=externalShift
+          ?`Sua jornada continua ativa fora da unidade. A saída deverá ser registrada manualmente. Distância aproximada: ${distance} m.`
+          :`Nenhuma nova batida necessária. Distância aproximada da unidade: ${distance} m.`;
       }
     }catch(e){
       let msg=e.message||'Não foi possível verificar a presença.';
@@ -219,12 +223,22 @@ function renderToday(){
 
 async function saveEvent(type){
   $('savePill').textContent='Salvando...';
-  const payload={employee_id:me.id,branch_id:me.branch_id,event_type:type,source:'app',automatic:false,
-    latitude:currentLocation?.latitude??null,longitude:currentLocation?.longitude??null,accuracy_m:currentLocation?.accuracy??null,
-    geofence_verified:currentLocation?.verified??false,wifi_verified:false,bluetooth_verified:false,device_verified:false};
-  const {error}=await client.from('attendance_events').insert(payload);
-  if(error){$('savePill').textContent='Erro';alert(error.message);return}
-  $('savePill').textContent='Salvo no Supabase';currentLocation=null;await loadToday();
+  const {data,error}=await client.rpc('register_manual_attendance',{
+    p_event_type:type,
+    p_latitude:currentLocation?.latitude??null,
+    p_longitude:currentLocation?.longitude??null,
+    p_accuracy_m:currentLocation?.accuracy??null
+  });
+  if(error){
+    $('savePill').textContent='Erro';
+    alert(error.message);
+    return;
+  }
+  const row=Array.isArray(data)?data[0]:data;
+  $('savePill').textContent='Salvo no Supabase';
+  currentLocation=null;
+  if(row?.receipt_code) showReceipt(row);
+  await loadToday();
 }
 
 function distanceM(a,b,c,d){const R=6371e3,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180;const x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))}
@@ -249,9 +263,10 @@ async function loadMyHistory(){
 }
 
 async function loadEmployees(){
-  const {data,error}=await client.from('employees').select('id,full_name,email,role,active,user_id').order('full_name');
+  const {data,error}=await client.from('employees').select('id,full_name,email,role,active,user_id,allow_external_after_checkin,overtime_after_minutes,lunch_zero_counts_overtime,lunch_overtime_minutes').order('full_name');
   if(error){$('employeesBody').innerHTML=`<tr><td colspan="6">${esc(error.message)}</td></tr>`;return}
   const rows=data||[];
+  employeeDirectory=rows;
   $('employeesBody').innerHTML=rows.map(e=>`<tr>
     <td>${esc(e.full_name)}</td><td>${esc(e.email||'—')}</td>
     <td>${e.role==='admin'?'Administrador':e.role==='manager'?'Gestor':'Funcionário'}</td>
@@ -263,9 +278,18 @@ async function loadEmployees(){
     </div></td>
   </tr>`).join('');
   $('scheduleEmployee').innerHTML='<option value="">Selecione...</option>'+rows.filter(e=>e.active).map(e=>`<option value="${e.id}">${esc(e.full_name)}</option>`).join('');
+  if($('ruleEmployee')){
+    const current=$('ruleEmployee').value;
+    $('ruleEmployee').innerHTML='<option value="">Selecione...</option>'+rows.filter(e=>e.active).map(e=>`<option value="${e.id}">${esc(e.full_name)}</option>`).join('');
+    if(rows.some(e=>e.id===current)) $('ruleEmployee').value=current;
+  }
   document.querySelectorAll('[data-schedule]').forEach(btn=>btn.onclick=()=>{
     $('scheduleEmployee').value=btn.dataset.schedule;
     loadSchedulePreview();
+    if($('ruleEmployee')){
+      $('ruleEmployee').value=btn.dataset.schedule;
+      loadEmployeeRules();
+    }
     $('scheduleEmployee').scrollIntoView({behavior:'smooth',block:'center'});
   });
 }
@@ -282,6 +306,42 @@ async function createEmployee(){
 }
 
 
+
+
+function loadEmployeeRules(){
+  const id=$('ruleEmployee')?.value;
+  const e=employeeDirectory.find(x=>x.id===id);
+  if(!e){
+    if($('ruleMsg')) $('ruleMsg').textContent='Selecione um funcionário para editar as regras.';
+    return;
+  }
+  $('ruleExternal').checked=!!e.allow_external_after_checkin;
+  $('ruleOvertimeAfter').value=e.overtime_after_minutes ?? 10;
+  $('ruleLunchZero').checked=e.lunch_zero_counts_overtime !== false;
+  $('ruleLunchMinutes').value=e.lunch_overtime_minutes ?? 60;
+  $('ruleMsg').textContent=e.allow_external_after_checkin
+    ?'Serviço externo liberado: sair do raio não encerra o expediente automaticamente.'
+    :'Funcionário comum: sair do raio pode registrar a saída automática.';
+}
+
+async function saveEmployeeRules(){
+  const id=$('ruleEmployee').value;
+  if(!id){$('ruleMsg').textContent='Selecione um funcionário.';return}
+  const payload={
+    allow_external_after_checkin:$('ruleExternal').checked,
+    overtime_after_minutes:Number($('ruleOvertimeAfter').value||10),
+    lunch_zero_counts_overtime:$('ruleLunchZero').checked,
+    lunch_overtime_minutes:Number($('ruleLunchMinutes').value||60)
+  };
+  $('ruleMsg').textContent='Salvando regras...';
+  const {error}=await client.from('employees').update(payload).eq('id',id);
+  if(error){$('ruleMsg').textContent='Erro: '+error.message;return}
+  $('ruleMsg').textContent='Regras salvas com sucesso.';
+  await loadEmployees();
+  $('ruleEmployee').value=id;
+  loadEmployeeRules();
+  await loadManagerHome();
+}
 
 async function loadMySchedule(){
   const {data,error}=await client.from('work_schedules').select('weekday,start_time,break_start,break_end,end_time,tolerance_minutes').eq('employee_id',me.id).order('weekday');
@@ -404,29 +464,41 @@ document.querySelectorAll('.day-schedule-row .workDay').forEach(chk=>{
 });
 
 async function loadManagerHome(){
-  const [{data:emps},{data:events},{data:presence}]=await Promise.all([
-    client.from('employees').select('id,full_name,active').eq('active',true).order('full_name'),
+  const [{data:emps},{data:events},{data:presence},{data:overtime}]=await Promise.all([
+    client.from('employees').select('id,full_name,active,allow_external_after_checkin').eq('active',true).order('full_name'),
     client.from('attendance_events').select('employee_id,event_type,occurred_at').gte('occurred_at',startToday()).lte('occurred_at',endToday()).order('occurred_at',{ascending:true}),
-    client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,updated_at')
+    client.from('employee_presence').select('employee_id,is_present,last_seen_at,wifi_verified,geofence_verified,updated_at'),
+    client.rpc('get_overtime_snapshot')
   ]);
   const by=new Map();(events||[]).forEach(ev=>{const arr=by.get(ev.employee_id)||[];arr.push(ev);by.set(ev.employee_id,arr)});
   const presenceBy=new Map((presence||[]).map(p=>[p.employee_id,p]));
+  const overtimeBy=new Map((overtime||[]).map(o=>[o.employee_id,o]));
   let present=0;
   $('teamBody').innerHTML=(emps||[]).map(emp=>{
     const arr=by.get(emp.id)||[],ins=arr.filter(x=>x.event_type==='check_in'),outs=arr.filter(x=>x.event_type==='check_out');
     const p=presenceBy.get(emp.id);
-    const inside=p ? !!p.is_present : !!(arr.length&&arr[arr.length-1].event_type==='check_in');
-    if(inside)present++;
+    const ot=overtimeBy.get(emp.id);
+    const onShift=p ? !!p.is_present : !!(arr.length&&arr[arr.length-1].event_type==='check_in');
+    if(onShift)present++;
     let evidence='—';
-    if(p?.wifi_verified&&p?.geofence_verified)evidence='Wi‑Fi + localização';
+    if(emp.allow_external_after_checkin && onShift && !p?.geofence_verified) evidence='Em serviço externo';
+    else if(p?.wifi_verified&&p?.geofence_verified)evidence='Wi‑Fi + localização';
     else if(p?.wifi_verified)evidence='Wi‑Fi confirmado';
     else if(p?.geofence_verified)evidence='Localização confirmada';
     const lastSeen=p?.last_seen_at?fmtTime(p.last_seen_at):(arr.length?fmtTime(arr[arr.length-1].occurred_at):'—');
+    const overtimeMinutes=Number(ot?.total_overtime_minutes||0);
+    const lunchExtra=Number(ot?.lunch_overtime_minutes||0);
+    const otLabel=overtimeMinutes>0
+      ?`<br><small><strong>Hora extra: ${overtimeMinutes} min</strong>${lunchExtra>0?` • almoço ${lunchExtra} min`:''}</small>`
+      :'';
+    const statusLabel=emp.allow_external_after_checkin&&onShift&&!p?.geofence_verified
+      ?'Em serviço externo'
+      :(onShift?'Na empresa':'Fora da empresa');
     return `<tr>
-      <td>${emp.full_name}</td>
+      <td>${esc(emp.full_name)}</td>
       <td>${ins.length?fmtTime(ins[0].occurred_at):'—'}</td>
       <td>${outs.length?fmtTime(outs[outs.length-1].occurred_at):'—'}</td>
-      <td><span class="badge ${inside?'good':'neutral'}">${inside?'Na empresa':'Fora da empresa'}</span><br><small>${evidence} • ${lastSeen}</small></td>
+      <td><span class="badge ${onShift?'good':'neutral'}">${statusLabel}</span><br><small>${evidence} • ${lastSeen}</small>${otLabel}</td>
     </tr>`;
   }).join('');
   $('employeeTotal').textContent=(emps||[]).length;
@@ -519,6 +591,8 @@ $('createEmployeeBtn').onclick=createEmployee;
 $('refreshEmployees').onclick=loadEmployees;
 $('scheduleEmployee').onchange=loadSchedulePreview;
 $('saveScheduleBtn').onclick=saveSchedule;
+if($('ruleEmployee')) $('ruleEmployee').onchange=loadEmployeeRules;
+if($('saveEmployeeRulesBtn')) $('saveEmployeeRulesBtn').onclick=saveEmployeeRules;
 document.querySelectorAll('.nav[data-view]').forEach(btn=>btn.onclick=()=>openView(btn.dataset.view));
 client.auth.onAuthStateChange((e)=>{if(e==='SIGNED_OUT')showAuth()});
 client.channel('manager-presence-live')

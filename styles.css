@@ -16,3 +16,8 @@
   .day-schedule-row strong{grid-column:1/-1;font-size:16px}
   .day-schedule-row input{min-height:42px}
 }
+
+.rule-toggle{display:flex;gap:12px;align-items:flex-start;padding:14px 0}
+.rule-toggle input{width:auto;margin-top:4px}
+.rule-toggle span{display:block}
+.rule-toggle small{opacity:.68;line-height:1.45}

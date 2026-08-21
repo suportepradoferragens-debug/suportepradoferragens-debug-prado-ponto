@@ -238,6 +238,45 @@
             <div id="schedulePreview" class="schedule-summary"></div>
           </div>
         </article>
+        <article class="card table-card">
+          <div class="card-head">
+            <div><span class="eyebrow">REGRAS INDIVIDUAIS</span><h3>Hora extra e serviço externo</h3></div>
+            <span class="pill">Por funcionário</span>
+          </div>
+          <div class="grid two">
+            <label>Funcionário
+              <select id="ruleEmployee"><option value="">Selecione...</option></select>
+            </label>
+            <label>Iniciar hora extra após o expediente
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="ruleOvertimeAfter" type="number" min="0" max="240" value="10">
+                <span>minutos</span>
+              </div>
+            </label>
+          </div>
+
+          <label class="rule-toggle">
+            <input id="ruleExternal" type="checkbox">
+            <span><strong>Permitir serviço externo após chegada</strong><br>
+            <small>Depois que o funcionário confirmar a chegada na empresa, sair do geofence não encerra a jornada automaticamente. A saída deverá ser batida manualmente.</small></span>
+          </label>
+
+          <label class="rule-toggle">
+            <input id="ruleLunchZero" type="checkbox" checked>
+            <span><strong>Almoço 00:00 conta como hora extra</strong><br>
+            <small>Use 00:00 / 00:00 somente quando o funcionário trabalhar o período de almoço. Para dia sem almoço previsto, deixe o intervalo vazio.</small></span>
+          </label>
+
+          <label>Minutos de hora extra quando almoço = 00:00
+            <input id="ruleLunchMinutes" type="number" min="0" max="240" value="60">
+          </label>
+
+          <div class="actions">
+            <button id="saveEmployeeRulesBtn" class="primary">Salvar regras do funcionário</button>
+          </div>
+          <p id="ruleMsg" class="privacy">Selecione um funcionário para editar as regras.</p>
+        </article>
+
       </section>
 
       <section id="managerRecords" class="view">
