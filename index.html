@@ -13,6 +13,36 @@
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+
+<script>
+function startGoogleLogin(event){
+  if(event) event.preventDefault();
+  var btn=document.getElementById('googleLoginBtn');
+  var msg=document.getElementById('authMsg');
+  if(btn) btn.disabled=true;
+  if(msg) msg.textContent='Abrindo o Google...';
+
+  try{
+    var params=new URLSearchParams(window.location.search);
+    var inviteEmail=params.get('email');
+    if(inviteEmail) sessionStorage.setItem('pradoInviteEmail',inviteEmail.toLowerCase());
+
+    var redirectTo=window.location.origin;
+    var url='https://coeqnnanqzlkkgkejbef.supabase.co/auth/v1/authorize'
+      +'?provider=google'
+      +'&redirect_to='+encodeURIComponent(redirectTo);
+
+    window.location.href=url;
+  }catch(err){
+    if(btn) btn.disabled=false;
+    if(msg){
+      msg.textContent='Não foi possível abrir o Google. Atualize a página e tente novamente.';
+      msg.classList.add('bad');
+    }
+  }
+}
+</script>
+
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -24,7 +54,7 @@
         <span>Convite para</span>
         <strong id="inviteEmailLabel"></strong>
       </div>
-      <button id="googleLoginBtn" class="google-btn" type="button">
+      <button id="googleLoginBtn" class="google-btn" type="button" onclick="startGoogleLogin(event)">
         <span class="google-g">G</span>
         <span>Continuar com Google</span>
       </button>
