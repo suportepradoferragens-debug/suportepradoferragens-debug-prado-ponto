@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#123b2a">
+<title>Entrando no Prado Ponto</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#123b2a}
+.card{width:min(420px,100%);background:#fff;border-radius:26px;padding:30px;box-shadow:0 24px 70px rgba(0,0,0,.22)}h1{margin:0 0 8px;color:#172018}p{color:#69736c;line-height:1.5}.status{margin-top:18px;padding:14px;border-radius:14px;background:#f2f5f2;color:#123b2a;font-weight:700}
+a{display:block;margin-top:14px;text-align:center;color:#123b2a}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<main class="card">
+<h1>Login confirmado</h1>
+<p>Estamos concluindo seu acesso ao Prado Ponto.</p>
+<div id="status" class="status">Finalizando autenticação…</div>
+<a href="/">Voltar ao Prado Ponto</a>
+</main>
+<script>
+(function(){
+  var status=document.getElementById('status');
+  try{
+    if(!window.supabase || !window.supabase.createClient){
+      status.textContent='Não foi possível carregar o login. Toque em Voltar ao Prado Ponto.';
+      return;
+    }
+    var client=window.supabase.createClient(
+      'https://coeqnnanqzlkkgkejbef.supabase.co',
+      'sb_publishable_1qD2SXfcWcWJ7AcvrlmErQ_VI6GZg8c'
+    );
+    var attempts=0;
+    var done=function(){
+      client.auth.getSession().then(function(res){
+        var session=res && res.data && res.data.session;
+        if(session){
+          status.textContent='Acesso confirmado. Abrindo o Prado Ponto…';
+          setTimeout(function(){ location.replace('/'); },250);
+        }else if(attempts++ < 20){
+          setTimeout(done,250);
+        }else{
+          status.textContent='Login confirmado. Toque em Voltar ao Prado Ponto.';
+        }
+      }).catch(function(){
+        status.textContent='Login confirmado. Toque em Voltar ao Prado Ponto.';
+      });
+    };
+    setTimeout(done,100);
+  }catch(e){
+    status.textContent='Login confirmado. Toque em Voltar ao Prado Ponto.';
+  }
+})();
+</script>
+</body>
+</html>

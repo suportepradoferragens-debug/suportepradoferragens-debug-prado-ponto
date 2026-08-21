@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#123b2a">
+<title>Prado Ponto - Entrar</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#123b2a}
+main{width:min(430px,100%);background:#fff;border-radius:26px;padding:30px;box-shadow:0 24px 70px rgba(0,0,0,.22)}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:24px}.mark{width:44px;height:44px;border-radius:14px;background:#eef3ef;color:#123b2a;display:grid;place-items:center;font-weight:900}
+.brand div{display:flex;flex-direction:column}.brand small{color:#788179}h1{margin:0 0 8px;font-size:28px;color:#172018}p{margin:0 0 20px;color:#69736c;line-height:1.5}
+button{width:100%;min-height:54px;border:0;border-radius:15px;background:#123b2a;color:#fff;font:700 16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-appearance:none;appearance:none}
+.note{display:block;margin-top:14px;text-align:center;color:#7a837d}
+</style>
+</head>
+<body>
+<main>
+<div class="brand"><div class="mark">P</div><div><strong>Prado Ponto</strong><small>Gestão de jornada</small></div></div>
+<h1>Acessar Prado Ponto</h1>
+<p>Entre com a conta Google vinculada ao seu cadastro.</p>
+<form action="https://coeqnnanqzlkkgkejbef.supabase.co/auth/v1/authorize" method="get">
+<input type="hidden" name="provider" value="google">
+<input type="hidden" name="redirect_to" value="https://suportepradoferragens-debug-prado-p.vercel.app/auth-callback.html">
+<button type="submit">Continuar com Google</button>
+</form>
+<small class="note">Sem senha. O acesso é identificado pelo e-mail da conta Google.</small>
+</main>
+</body>
+</html>
