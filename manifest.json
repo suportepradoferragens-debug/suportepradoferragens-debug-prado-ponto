@@ -3,18 +3,10 @@
   "short_name": "Prado Ponto",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f4f4ef",
-  "theme_color": "#123b2a",
+  "background_color": "#07170f",
+  "theme_color": "#0b5d34",
   "icons": [
-    {
-      "src": "icon-180.png",
-      "sizes": "180x180",
-      "type": "image/png"
-    },
-    {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
+    {"src":"/icon-180.png","sizes":"180x180","type":"image/png","purpose":"any maskable"},
+    {"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
   ]
 }
